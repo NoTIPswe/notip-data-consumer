@@ -34,3 +34,6 @@ ignored/
 
 # --- Generated ---
 api-contracts/
+
+# --- npm semantic versioning ---
+node_modules

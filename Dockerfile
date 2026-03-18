@@ -1,6 +1,8 @@
 # ─── Builder (CI/CD) ────────────────────────────────────────────────────────
 FROM ghcr.io/notipswe/notip-go-base:v0.0.1 AS builder
 
+WORKDIR /app
+
 COPY go.mod go.sum ./
 RUN go mod download
 
