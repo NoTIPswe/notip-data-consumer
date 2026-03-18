@@ -1,0 +1,16 @@
+name: pr-checks
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  quality-checks:
+    name: Quality Checks
+    uses: ./.github/workflows/quality-checks.yml
+    secrets: inherit

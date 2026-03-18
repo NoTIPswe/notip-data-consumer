@@ -1,0 +1,24 @@
+{
+	"name": "NoTIP Go Dev",
+
+	"image": "ghcr.io/notipswe/notip-go-dev:v0.0.1",
+
+	"postCreateCommand": "pre-commit install --install-hooks",
+	"init": true,
+
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"golang.go",
+				"SonarSource.sonarlint-vscode",
+				"ms-azuretools.vscode-containers"
+			]
+		}
+	},
+
+	"forwardPorts": [8080],
+
+	"workspaceFolder": "/workspaces/notip-data-consumer",
+	"remoteUser": "dev",
+	"updateRemoteUserUID": true
+}
