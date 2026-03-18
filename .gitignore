@@ -1,0 +1,36 @@
+# --- Build Outputs ---
+notip-app
+tmp/
+
+# --- Test & Coverage ---
+coverage.out
+coverage/
+
+# --- Environment Variables (IMPORTANT!) ---
+.env
+.env.local
+.env.*.local
+*.env
+
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# --- IDEs / Editor ---
+.idea/
+.vscode/
+
+# --- Temporary Files ---
+*.tmp
+*.temp
+.cache/
+
+# --- Certs ---
+certs/
+
+# --- Ignored folder ---
+ignored/
+
+# --- Generated ---
+api-contracts/
