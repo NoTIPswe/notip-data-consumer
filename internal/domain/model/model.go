@@ -1,0 +1,79 @@
+package model
+
+import (
+	"encoding/json"
+	"time"
+)
+
+// OpaqueBlob is a named type for a base64-encoded payload.
+type OpaqueBlob struct {
+	Value string
+}
+
+func (o *OpaqueBlob) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	o.Value = s
+	return nil
+}
+
+func (o OpaqueBlob) MarshalJSON() ([]byte, error) {
+	return json.Marshal(o.Value)
+}
+
+// TelemetryEnvelope is the wire format of a NATS message on telemetry.data.{tenantId}.{gwId}.
+type TelemetryEnvelope struct {
+	GatewayID     string     `json:"gatewayId"`
+	SensorID      string     `json:"sensorId"`
+	SensorType    string     `json:"sensorType"`
+	Timestamp     time.Time  `json:"timestamp"`
+	KeyVersion    int        `json:"keyVersion"`
+	EncryptedData OpaqueBlob `json:"encryptedData"`
+	IV            OpaqueBlob `json:"iv"`
+	AuthTag       OpaqueBlob `json:"authTag"`
+}
+
+// TelemetryRow is the normalised record written to TimescaleDB.
+type TelemetryRow struct {
+	Time          time.Time
+	TenantID      string
+	GatewayID     string
+	SensorID      string
+	SensorType    string
+	EncryptedData OpaqueBlob
+	IV            OpaqueBlob
+	AuthTag       OpaqueBlob
+	KeyVersion    int
+}
+
+// AlertPayload is published to alert.{tenantId}.gw_offline on an offline transition.
+type AlertPayload struct {
+	GatewayID string    `json:"gatewayId"`
+	LastSeen  time.Time `json:"lastSeen"`
+	TimeoutMs int64     `json:"timeoutMs"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// AlertConfig is one entry from the Management API alert configuration list.
+type AlertConfig struct {
+	TenantID  string
+	GatewayID *string
+	TimeoutMs int64
+}
+
+// GatewayStatus represents the online/offline state of a gateway.
+type GatewayStatus string
+
+const (
+	Offline GatewayStatus = "offline"
+	Online  GatewayStatus = "online"
+)
+
+// GatewayStatusUpdate is the payload for the internal.mgmt.gateway.update-status RR call.
+type GatewayStatusUpdate struct {
+	GatewayID  string        `json:"gatewayId"`
+	Status     GatewayStatus `json:"status"`
+	LastSeenAt time.Time     `json:"lastSeenAt"`
+}
