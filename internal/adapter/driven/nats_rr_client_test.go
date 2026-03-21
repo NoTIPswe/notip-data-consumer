@@ -32,6 +32,13 @@ func newRRClient(r natsRequester) *NATSRRClient {
 	return &NATSRRClient{nc: r, timeout: 5 * time.Second}
 }
 
+func TestNewNATSRRClientSetsFields(t *testing.T) {
+	mock := &mockRequester{}
+	c := NewNATSRRClient(nil, 3*time.Second)
+	assert.NotNil(t, c)
+	_ = mock // satisfy linter
+}
+
 // ─── FetchAlertConfigs ────────────────────────────────────────────────────────
 
 func TestNATSRRClientFetchAlertConfigsSuccess(t *testing.T) {

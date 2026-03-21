@@ -70,6 +70,19 @@ func makeRow(tenantID, gatewayID string) model.TelemetryRow {
 	}
 }
 
+// constructor and close
+
+func TestNewPostgresTelemetryWriterSetsPool(t *testing.T) {
+	w := NewPostgresTelemetryWriter(nil)
+	assert.NotNil(t, w)
+}
+
+func TestPostgresTelemetryWriterCloseDoesNotPanic(t *testing.T) {
+	pool := &stubPool{}
+	w := newWriter(pool)
+	assert.NotPanics(t, w.Close)
+}
+
 // Write
 
 func TestPostgresTelemetryWriterWriteSuccess(t *testing.T) {

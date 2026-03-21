@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -28,8 +29,10 @@ const (
 )
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
 	if err := run(); err != nil {
-		log.Fatalf("fatal: %v", err)
+		slog.Error("fatal", "err", err)
+		os.Exit(1)
 	}
 }
 
@@ -131,7 +134,7 @@ func run() error {
 	metricsSrv := &http.Server{Addr: cfg.MetricsAddr, Handler: mux}
 	go func() {
 		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("metrics server: %v", err)
+			slog.Error("metrics server", "err", err)
 		}
 	}()
 	defer metricsSrv.Shutdown(context.Background()) //nolint:errcheck
@@ -145,7 +148,7 @@ func run() error {
 	// ── Step 7: DecommissionConsumer ────────────────────────────────────────────
 	go func() {
 		if err := decommConsumer.Run(ctx); err != nil {
-			log.Printf("decommission consumer: %v", err)
+			slog.Error("decommission consumer", "err", err)
 		}
 	}()
 

@@ -22,6 +22,16 @@ func (s *stubDecommissionHandler) HandleDecommission(tenantID, gatewayID string)
 	s.calls++
 }
 
+// constructor
+
+func TestNewNATSDecommissionConsumerSetsFields(t *testing.T) {
+	handler := &stubDecommissionHandler{}
+	c := NewNATSDecommissionConsumer(nil, handler)
+
+	assert.NotNil(t, c)
+	assert.Equal(t, handler, c.handler)
+}
+
 // extractIDs
 
 func TestNATSDecommissionConsumerExtractIDsSuccess(t *testing.T) {

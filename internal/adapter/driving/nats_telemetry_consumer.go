@@ -30,10 +30,18 @@ type telemetryConsumerMetrics interface {
 	ObserveWriteLatency(d time.Duration)
 }
 
-// pendingMsg pairs an unparsed NATS message with its decoded row so the flush
+// msgAcknowledger abstracts NATS message acknowledgement so writeBatch can be
+// tested without a live NATS connection. *nats.Msg satisfies this interface.
+type msgAcknowledger interface {
+	Ack(opts ...nats.AckOpt) error
+	NakWithDelay(delay time.Duration, opts ...nats.AckOpt) error
+	Term(opts ...nats.AckOpt) error
+}
+
+// pendingMsg pairs a NATS message acknowledger with its decoded row so the flush
 // loop can ACK/NAK the original message after WriteBatch returns.
 type pendingMsg struct {
-	msg *nats.Msg
+	msg msgAcknowledger
 	row model.TelemetryRow
 	err error // non-nil means permanentError — row is zero value
 }
@@ -141,7 +149,6 @@ func (c *NATSTelemetryConsumer) writeBatch(ctx context.Context, batch []pendingM
 		c.metrics.ObserveWriteLatency(time.Since(start))
 	}
 
-	rowIdx := 0
 	for _, pm := range batch {
 		if pm.err != nil {
 			// Permanent parse error term so NATS never redelivers.
@@ -155,7 +162,6 @@ func (c *NATSTelemetryConsumer) writeBatch(ctx context.Context, batch []pendingM
 			c.metrics.IncMessagesWritten()
 			_ = pm.msg.Ack()
 		}
-		rowIdx++
 	}
 }
 

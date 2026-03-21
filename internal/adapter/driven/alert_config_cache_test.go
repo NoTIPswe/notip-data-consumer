@@ -121,6 +121,75 @@ func TestAlertConfigCacheRefreshFetchErrorDoesNotClearSnapshot(t *testing.T) {
 		"a failed refresh must not wipe the existing snapshot")
 }
 
+// ─── Run ──────────────────────────────────────────────────────────────────────
+
+func TestAlertConfigCacheRunPerformsInitialFetch(t *testing.T) {
+	fetcher := &stubFetcher{configs: []model.AlertConfig{
+		{TenantID: "t1", GatewayID: nil, TimeoutMs: 5000},
+	}}
+	cache, _ := newCache(fetcher, 60000)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		cache.Run(ctx)
+		close(done)
+	}()
+
+	// Give Run time to complete the initial fetch.
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	<-done
+
+	assert.Equal(t, int64(5000), cache.TimeoutFor("t1", "any"),
+		"Run must perform an initial fetch before entering the refresh loop")
+}
+
+func TestAlertConfigCacheRunRefreshesOnTick(t *testing.T) {
+	fetcher := &stubFetcher{configs: []model.AlertConfig{
+		{TenantID: "t1", GatewayID: nil, TimeoutMs: 1000},
+	}}
+	m := &stubCacheMetrics{}
+	// Very short refresh interval so the ticker fires quickly.
+	cache := NewAlertConfigCache(fetcher, m, 60000, 20*time.Millisecond, 1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		cache.Run(ctx)
+		close(done)
+	}()
+
+	<-done
+
+	// At 20ms interval in 100ms window the refresh must be called multiple times.
+	assert.GreaterOrEqual(t, fetcher.calls, 3,
+		"Run must refresh the cache on every tick")
+}
+
+func TestAlertConfigCacheRunStopsOnContextCancel(t *testing.T) {
+	fetcher := &stubFetcher{configs: nil}
+	cache, _ := newCache(fetcher, 60000)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		cache.Run(ctx)
+		close(done)
+	}()
+
+	cancel()
+
+	select {
+	case <-done:
+		// Run exited promptly.
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("Run did not stop within 200ms after context cancellation")
+	}
+}
+
 // ─── fetchWithBackoff ─────────────────────────────────────────────────────────
 
 func TestAlertConfigCacheFetchWithBackoffStopsAfterMaxRetries(t *testing.T) {
@@ -138,4 +207,19 @@ func TestAlertConfigCacheFetchWithBackoffStopsAfterMaxRetries(t *testing.T) {
 	require.Error(t, err)
 	assert.GreaterOrEqual(t, m.refreshErrors, 1,
 		"each failed attempt must increment the error counter")
+}
+
+func TestAlertConfigCacheFetchWithBackoffSucceedsOnFirstAttempt(t *testing.T) {
+	fetcher := &stubFetcher{configs: []model.AlertConfig{
+		{TenantID: "t1", TimeoutMs: 5000},
+	}}
+	m := &stubCacheMetrics{}
+	cache := NewAlertConfigCache(fetcher, m, 60000, time.Hour, 3)
+
+	err := cache.fetchWithBackoff(context.Background())
+
+	require.NoError(t, err, "fetchWithBackoff must return nil when the first attempt succeeds")
+	assert.Equal(t, int64(5000), cache.TimeoutFor("t1", "any"),
+		"a successful fetch must populate the snapshot")
+	assert.Equal(t, 0, m.refreshErrors, "no error counter incremented on success")
 }
