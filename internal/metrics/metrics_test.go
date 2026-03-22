@@ -133,24 +133,24 @@ func TestMetricsSatisfiesNarrowInterfaces(t *testing.T) {
 		IncAlertsPublished()
 		IncAlertPublishErrors()
 	}
-	type gatewayStatusMetrics interface {
+	type statusErrRecorder interface {
 		IncStatusUpdateErrors()
 	}
-	type alertCacheMetrics interface {
+	type cacheErrRecorder interface {
 		IncAlertCacheRefreshErrors()
 	}
 	type heartbeatTrackerMetrics interface {
 		IncStatusUpdateDropped()
 		SetHeartbeatMapSize(v float64)
 	}
-	type natsReconnectMetrics interface {
+	type natsReconnectRecorder interface {
 		IncNATSReconnects()
 	}
 
 	var _ telemetryConsumerMetrics = m
 	var _ alertPublisherMetrics = m
-	var _ gatewayStatusMetrics = m
-	var _ alertCacheMetrics = m
+	var _ statusErrRecorder = m
+	var _ cacheErrRecorder = m
 	var _ heartbeatTrackerMetrics = m
-	var _ natsReconnectMetrics = m
+	var _ natsReconnectRecorder = m
 }

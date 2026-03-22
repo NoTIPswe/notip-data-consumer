@@ -32,7 +32,6 @@ type heartbeatEntry struct {
 
 // statusUpdateJob is queued for the background dispatch worker.
 type statusUpdateJob struct {
-	ctx    context.Context //nolint:containedctx // intentional: propagates caller deadline into async RR call
 	update model.GatewayStatusUpdate
 }
 
@@ -40,7 +39,7 @@ type statusUpdateJob struct {
 // and HeartbeatTicker. It is the core domain service of this application.
 // Telemetry persistence is the responsibility of the driving adapter, not this service.
 type HeartbeatTracker struct {
-	clock          port.Clock
+	clock          port.ClockProvider
 	alertPublisher port.AlertPublisher
 	statusUpdater  port.GatewayStatusUpdater
 	configProvider port.AlertConfigProvider
@@ -61,7 +60,7 @@ type HeartbeatTracker struct {
 // preventing false alerts while the service is collecting initial heartbeats.
 // statusUpdateBufSize is the capacity of the status-update dispatch channel.
 func NewHeartbeatTracker(
-	clock port.Clock,
+	clock port.ClockProvider,
 	alertPublisher port.AlertPublisher,
 	statusUpdater port.GatewayStatusUpdater,
 	configProvider port.AlertConfigProvider,
@@ -100,7 +99,7 @@ func (t *HeartbeatTracker) Close() {
 func (t *HeartbeatTracker) dispatchWorker() {
 	defer close(t.done)
 	for job := range t.dispatchCh {
-		_ = t.statusUpdater.UpdateStatus(job.ctx, job.update)
+		_ = t.statusUpdater.UpdateStatus(context.Background(), job.update)
 	}
 }
 
@@ -123,7 +122,7 @@ func (t *HeartbeatTracker) HandleTelemetry(ctx context.Context, tenantID string,
 			knownStatus: model.Online,
 		}
 		t.metrics.SetHeartbeatMapSize(float64(len(t.beats)))
-		t.dispatchStatusUpdate(ctx, model.GatewayStatusUpdate{
+		t.dispatchStatusUpdate(model.GatewayStatusUpdate{
 			GatewayID:  env.GatewayID,
 			Status:     model.Online,
 			LastSeenAt: now,
@@ -135,7 +134,7 @@ func (t *HeartbeatTracker) HandleTelemetry(ctx context.Context, tenantID string,
 
 	if entry.knownStatus == model.Offline {
 		entry.knownStatus = model.Online
-		t.dispatchStatusUpdate(ctx, model.GatewayStatusUpdate{
+		t.dispatchStatusUpdate(model.GatewayStatusUpdate{
 			GatewayID:  env.GatewayID,
 			Status:     model.Online,
 			LastSeenAt: now,
@@ -147,7 +146,7 @@ func (t *HeartbeatTracker) HandleTelemetry(ctx context.Context, tenantID string,
 
 // HandleDecommission removes a gateway from the heartbeat map.
 // Subsequent Tick calls will ignore this gateway.
-func (t *HeartbeatTracker) HandleDecommission(tenantID string, gatewayID string) {
+func (t *HeartbeatTracker) HandleDecommission(tenantID, gatewayID string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.beats, gatewayKey{tenantID, gatewayID})
@@ -195,7 +194,7 @@ func (t *HeartbeatTracker) Tick(ctx context.Context) {
 			Timestamp: now,
 		})
 
-		t.dispatchStatusUpdate(ctx, model.GatewayStatusUpdate{
+		t.dispatchStatusUpdate(model.GatewayStatusUpdate{
 			GatewayID:  entry.gatewayID,
 			Status:     model.Offline,
 			LastSeenAt: entry.lastSeen,
@@ -215,9 +214,9 @@ func (t *HeartbeatTracker) Tick(ctx context.Context) {
 
 // dispatchStatusUpdate sends a status update to the worker channel without blocking.
 // If the channel is full the update is dropped and the dropped counter is incremented.
-func (t *HeartbeatTracker) dispatchStatusUpdate(ctx context.Context, update model.GatewayStatusUpdate) {
+func (t *HeartbeatTracker) dispatchStatusUpdate(update model.GatewayStatusUpdate) {
 	select {
-	case t.dispatchCh <- statusUpdateJob{ctx: ctx, update: update}:
+	case t.dispatchCh <- statusUpdateJob{update: update}:
 	default:
 		t.metrics.IncStatusUpdateDropped()
 	}

@@ -29,11 +29,11 @@ type GatewayStatusUpdater interface {
 
 // AlertConfigProvider returns the configured offline timeout for a specific gateway.
 type AlertConfigProvider interface {
-	TimeoutFor(tenantID string, gatewayID string) int64
+	TimeoutFor(tenantID, gatewayID string) int64
 }
 
-// Clock abstracts time.Now() to enable deterministic tests.
-type Clock interface {
+// ClockProvider abstracts time.Now() to enable deterministic tests.
+type ClockProvider interface {
 	Now() time.Time
 }
 
@@ -48,7 +48,7 @@ type TelemetryMessageHandler interface {
 
 // DecommissionEventHandler is the entry point for a gateway decommission event.
 type DecommissionEventHandler interface {
-	HandleDecommission(tenantID string, gatewayID string)
+	HandleDecommission(tenantID, gatewayID string)
 }
 
 // HeartbeatTicker is the entry point for the periodic liveness check.

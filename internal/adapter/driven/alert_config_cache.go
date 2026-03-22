@@ -14,8 +14,8 @@ type alertConfigFetcher interface {
 	FetchAlertConfigs(ctx context.Context) ([]model.AlertConfig, error)
 }
 
-// alertCacheMetrics is the narrow metric interface for AlertConfigCache.
-type alertCacheMetrics interface {
+// alertCacheErrRecorder is the narrow metric interface for AlertConfigCache.
+type alertCacheErrRecorder interface {
 	IncAlertCacheRefreshErrors()
 }
 
@@ -34,7 +34,7 @@ type alertConfigSnapshot struct {
 type AlertConfigCache struct {
 	snapshot         atomic.Pointer[alertConfigSnapshot]
 	rrClient         alertConfigFetcher
-	metrics          alertCacheMetrics
+	metrics          alertCacheErrRecorder
 	defaultTimeoutMs int64
 	refreshInterval  time.Duration
 	maxRetries       int
@@ -44,7 +44,7 @@ type AlertConfigCache struct {
 // to start the initial fetch and the periodic refresh loop.
 func NewAlertConfigCache(
 	rrClient alertConfigFetcher,
-	metrics alertCacheMetrics,
+	metrics alertCacheErrRecorder,
 	defaultTimeoutMs int64,
 	refreshInterval time.Duration,
 	maxRetries int,
@@ -66,7 +66,7 @@ func NewAlertConfigCache(
 
 // TimeoutFor returns the configured offline timeout for a specific gateway.
 // Lock-free: reads from atomic snapshot pointer.
-func (c *AlertConfigCache) TimeoutFor(tenantID string, gatewayID string) int64 {
+func (c *AlertConfigCache) TimeoutFor(tenantID, gatewayID string) int64 {
 	snap := c.snapshot.Load()
 
 	if cfg, ok := snap.byGateway[tenantID+"/"+gatewayID]; ok {

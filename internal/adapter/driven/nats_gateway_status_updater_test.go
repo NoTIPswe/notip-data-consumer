@@ -32,7 +32,7 @@ func (s *stubGatewayStatusMetrics) IncStatusUpdateErrors() {
 
 // helpers
 
-func newStatusUpdater(client gatewayStatusClient) (*NATSGatewayStatusUpdater, *stubGatewayStatusMetrics) {
+func newStatusUpdater(client gatewayStatusUpdateCaller) (*NATSGatewayStatusUpdater, *stubGatewayStatusMetrics) {
 	m := &stubGatewayStatusMetrics{}
 	return NewNATSGatewayStatusUpdater(client, m), m
 }

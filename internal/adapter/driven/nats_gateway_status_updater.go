@@ -6,24 +6,24 @@ import (
 	"github.com/NoTIPswe/notip-data-consumer/internal/domain/model"
 )
 
-// subset of NATSRRClient used by NATSGatewayStatusUpdater.
-type gatewayStatusClient interface {
+// gatewayStatusUpdateCaller is the subset of NATSRRClient used by NATSGatewayStatusUpdater.
+type gatewayStatusUpdateCaller interface {
 	UpdateGatewayStatus(ctx context.Context, update model.GatewayStatusUpdate) error
 }
 
-// metric interface for NATSGatewayStatusUpdater.
-type gatewayStatusMetrics interface {
+// statusUpdateErrRecorder is the metric interface for NATSGatewayStatusUpdater.
+type statusUpdateErrRecorder interface {
 	IncStatusUpdateErrors()
 }
 
 // implements port.GatewayStatusUpdater.
 // delegates to NATSRRClient for the actual nats rr mechanics.
 type NATSGatewayStatusUpdater struct {
-	client  gatewayStatusClient
-	metrics gatewayStatusMetrics
+	client  gatewayStatusUpdateCaller
+	metrics statusUpdateErrRecorder
 }
 
-func NewNATSGatewayStatusUpdater(client gatewayStatusClient, metrics gatewayStatusMetrics) *NATSGatewayStatusUpdater {
+func NewNATSGatewayStatusUpdater(client gatewayStatusUpdateCaller, metrics statusUpdateErrRecorder) *NATSGatewayStatusUpdater {
 	return &NATSGatewayStatusUpdater{client: client, metrics: metrics}
 }
 
