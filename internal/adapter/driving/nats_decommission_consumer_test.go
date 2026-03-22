@@ -1,6 +1,8 @@
 package driving
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/nats-io/nats.go"
@@ -20,6 +22,13 @@ func (s *stubDecommissionHandler) HandleDecommission(tenantID, gatewayID string)
 	s.tenantID = tenantID
 	s.gatewayID = gatewayID
 	s.calls++
+}
+
+// simulates a JetStream context whose Subscribe always fails.
+type stubFailingSubscriber struct{ err error }
+
+func (s *stubFailingSubscriber) Subscribe(_ string, _ nats.MsgHandler, _ ...nats.SubOpt) (*nats.Subscription, error) {
+	return nil, s.err
 }
 
 // constructor
@@ -83,4 +92,17 @@ func TestNATSDecommissionConsumerHandleMsgBadSubjectTerms(t *testing.T) {
 
 	assert.Equal(t, 0, handler.calls,
 		"handler must not be called when the subject cannot be parsed")
+}
+
+// Run — subscribe error path
+
+func TestNATSDecommissionConsumerRunReturnsSubscribeError(t *testing.T) {
+	sentinel := errors.New("nats: not connected")
+	c := NewNATSDecommissionConsumer(&stubFailingSubscriber{err: sentinel}, &stubDecommissionHandler{})
+
+	err := c.Run(context.Background())
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, sentinel)
+	assert.Contains(t, err.Error(), "subscribe")
 }
