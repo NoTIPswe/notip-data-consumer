@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/notipswe/notip-go-dev:v0.0.1
+      options: --user root
 
     steps:
       - name: Checkout code
@@ -49,6 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/notipswe/notip-go-dev:v0.0.1
+      options: --user root
 
     steps:
       - name: Checkout code
