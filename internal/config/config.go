@@ -23,6 +23,7 @@ type Config struct {
 	DBPasswordFile string
 	DBMaxConns     int
 	DBMinConns     int
+	DBSSLMode      string
 
 	GatewayBufferSize           int
 	HeartbeatTickMs             int
@@ -41,6 +42,7 @@ func Load() (*Config, error) {
 		DBPort:                      5432,
 		DBMaxConns:                  10,
 		DBMinConns:                  2,
+		DBSSLMode:                   envOrDefault("DB_SSL_MODE", "require"),
 		GatewayBufferSize:           1000,
 		HeartbeatTickMs:             10000,
 		HeartbeatGracePeriodMs:      120000,
@@ -75,6 +77,12 @@ func Load() (*Config, error) {
 	l.optInt("ALERT_CONFIG_REFRESH_MS", &cfg.AlertConfigRefreshMs)
 	l.optInt64("ALERT_CONFIG_DEFAULT_TIMEOUT_MS", &cfg.AlertConfigDefaultTimeoutMs)
 	l.optInt("ALERT_CONFIG_MAX_RETRIES", &cfg.AlertConfigMaxRetries)
+
+	if l.err == nil {
+		if err := validateDBSSLMode(cfg.DBSSLMode); err != nil {
+			l.err = err
+		}
+	}
 
 	return cfg, l.err
 }
@@ -117,7 +125,7 @@ func (l *loader) optInt64(key string, dst *int64) {
 }
 
 // GetDatabaseDSN constructs the Postgres DSN by reading the password from the Docker secret file.
-// sslmode=disable is intentional: communication happens over the internal Docker network.
+// SSL mode is controlled by the DB_SSL_MODE environment variable (default: require).
 func (c *Config) GetDatabaseDSN() (string, error) {
 	passwordBytes, err := os.ReadFile(c.DBPasswordFile)
 	if err != nil {
@@ -125,8 +133,8 @@ func (c *Config) GetDatabaseDSN() (string, error) {
 	}
 	password := strings.TrimSpace(string(passwordBytes))
 
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
-		c.DBUser, password, c.DBHost, c.DBPort, c.DBName), nil
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		c.DBUser, password, c.DBHost, c.DBPort, c.DBName, c.DBSSLMode), nil
 }
 
 func envOrDefault(key, def string) string {
@@ -158,4 +166,13 @@ func parseInt64(s string, dst *int64) error {
 	}
 	*dst = v
 	return nil
+}
+
+func validateDBSSLMode(v string) error {
+	switch v {
+	case "disable", "require", "verify-ca", "verify-full":
+		return nil
+	default:
+		return fmt.Errorf("DB_SSL_MODE: invalid value %q", v)
+	}
 }

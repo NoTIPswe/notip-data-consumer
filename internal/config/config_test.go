@@ -34,6 +34,7 @@ func TestLoadDefaults(t *testing.T) {
 	assert.Equal(t, 5432, cfg.DBPort)
 	assert.Equal(t, 10, cfg.DBMaxConns)
 	assert.Equal(t, 2, cfg.DBMinConns)
+	assert.Equal(t, "require", cfg.DBSSLMode)
 	assert.Equal(t, 1000, cfg.GatewayBufferSize)
 	assert.Equal(t, 10000, cfg.HeartbeatTickMs)
 	assert.Equal(t, 120000, cfg.HeartbeatGracePeriodMs)
@@ -104,6 +105,15 @@ func TestLoadInvalidIntegerField(t *testing.T) {
 	assert.Contains(t, err.Error(), "HEARTBEAT_TICK_MS")
 }
 
+func TestLoadInvalidDBSSLMode(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("DB_SSL_MODE", "invalid-mode")
+
+	_, err := Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "DB_SSL_MODE")
+}
+
 func TestGetDatabaseDSN(t *testing.T) {
 	secretFile := filepath.Join(t.TempDir(), "db_password")
 	require.NoError(t, os.WriteFile(secretFile, []byte("s3cr3t\n"), 0o600))
@@ -114,6 +124,7 @@ func TestGetDatabaseDSN(t *testing.T) {
 		DBPort:         5432,
 		DBName:         "notip_measures",
 		DBPasswordFile: secretFile,
+		DBSSLMode:      "disable",
 	}
 
 	dsn, err := cfg.GetDatabaseDSN()

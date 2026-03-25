@@ -128,9 +128,17 @@ func run() error {
 		telemetryFlushInterval,
 	)
 
-	// ── Prometheus metrics server ───────────────────────────────────────────────
+	// ── Prometheus metrics server + health check ───────────────────────────────
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		if err := pool.Ping(r.Context()); err != nil {
+			http.Error(w, "db: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
 	metricsSrv := &http.Server{Addr: cfg.MetricsAddr, Handler: mux}
 	go func() {
 		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

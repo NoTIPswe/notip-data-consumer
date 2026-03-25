@@ -38,6 +38,7 @@ All configuration is loaded from environment variables at startup. Missing requi
 | `DB_PORT` | no | `5432` | |
 | `DB_MAX_CONNS` | no | `10` | pgxpool max connections |
 | `DB_MIN_CONNS` | no | `2` | pgxpool min connections |
+| `DB_SSL_MODE` | no | `require` | PostgreSQL TLS mode (`disable`, `require`, `verify-ca`, `verify-full`) |
 | `NATS_CONSUMER_DURABLE_NAME` | no | `data-consumer-telemetry` | JetStream durable consumer name |
 | `NATS_CONNECT_TIMEOUT_SECONDS` | no | `10` | |
 | `GATEWAY_BUFFER_SIZE` | no | `1000` | Status update dispatch buffer |
