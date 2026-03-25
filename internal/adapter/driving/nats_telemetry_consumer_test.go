@@ -55,6 +55,23 @@ func (s *stubTelemetryMetrics) IncMessagesWritten()                 { s.written+
 func (s *stubTelemetryMetrics) IncWriteErrors()                     { s.errors++ }
 func (s *stubTelemetryMetrics) ObserveWriteLatency(_ time.Duration) { s.latencies++ }
 
+type stubTelemetrySubscriber struct {
+	subject string
+	err     error
+	onSub   func(cb nats.MsgHandler)
+}
+
+func (s *stubTelemetrySubscriber) Subscribe(subj string, cb nats.MsgHandler, _ ...nats.SubOpt) (*nats.Subscription, error) {
+	s.subject = subj
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.onSub != nil {
+		s.onSub(cb)
+	}
+	return &nats.Subscription{}, nil
+}
+
 // stubMsg records which ACK operation was called — satisfies msgAcknowledger.
 type stubMsg struct {
 	acked    bool
@@ -74,10 +91,11 @@ func (s *stubMsg) Term(_ ...nats.AckOpt) error { s.termed = true; return nil }
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 const testSubjectT1GW1 = "telemetry.data.t1.gw-1"
+const testDurableName = "test-durable"
 
 func newConsumer(handler *stubTelemetryHandler, writer *stubTelemetryWriter) (*NATSTelemetryConsumer, *stubTelemetryMetrics) {
 	m := &stubTelemetryMetrics{}
-	c := NewNATSTelemetryConsumer(nil, handler, writer, m, "test-durable", 10, time.Second)
+	c := NewNATSTelemetryConsumer(nil, handler, writer, m, testDurableName, 10, time.Second)
 	return c, m
 }
 
@@ -113,6 +131,72 @@ func TestPermanentErrorUnwrapReturnsCause(t *testing.T) {
 	pe := permanentError{cause: cause}
 
 	assert.True(t, errors.Is(pe, cause), "Unwrap must expose the wrapped cause")
+}
+
+func TestNATSTelemetryConsumerRunReturnsSubscribeError(t *testing.T) {
+	handler := &stubTelemetryHandler{}
+	writer := &stubTelemetryWriter{}
+	metrics := &stubTelemetryMetrics{}
+
+	consumer := NewNATSTelemetryConsumer(
+		&stubTelemetrySubscriber{err: errors.New("nats unavailable")},
+		handler,
+		writer,
+		metrics,
+		testDurableName,
+		1,
+		time.Second,
+	)
+
+	err := consumer.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "subscribe")
+	assert.Contains(t, err.Error(), subjectTelemetry)
+}
+
+func TestNATSTelemetryConsumerRunSubscribesAndStopsOnCancel(t *testing.T) {
+	handler := &stubTelemetryHandler{}
+	writer := &stubTelemetryWriter{}
+	metrics := &stubTelemetryMetrics{}
+	sub := &stubTelemetrySubscriber{
+		onSub: func(cb nats.MsgHandler) {
+			cb(marshaledMsg(testSubjectT1GW1, makeEnvelope("gw-1")))
+		},
+	}
+
+	consumer := NewNATSTelemetryConsumer(
+		sub,
+		handler,
+		writer,
+		metrics,
+		testDurableName,
+		1,
+		time.Hour,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- consumer.Run(ctx)
+	}()
+
+	require.Eventually(t, func() bool {
+		return len(writer.rows) == 1
+	}, 500*time.Millisecond, 10*time.Millisecond)
+
+	cancel()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Run did not return after context cancellation")
+	}
+
+	assert.Equal(t, subjectTelemetry, sub.subject)
+	assert.Equal(t, 1, metrics.received)
+	assert.Equal(t, 1, metrics.written)
+	assert.Equal(t, "t1", handler.lastTenantID)
 }
 
 // ─── flushLoop ────────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
@@ -29,6 +30,15 @@ type stubFailingSubscriber struct{ err error }
 
 func (s *stubFailingSubscriber) Subscribe(_ string, _ nats.MsgHandler, _ ...nats.SubOpt) (*nats.Subscription, error) {
 	return nil, s.err
+}
+
+type stubDecommissionSubscriber struct {
+	subject string
+}
+
+func (s *stubDecommissionSubscriber) Subscribe(subj string, _ nats.MsgHandler, _ ...nats.SubOpt) (*nats.Subscription, error) {
+	s.subject = subj
+	return &nats.Subscription{}, nil
 }
 
 // constructor
@@ -105,4 +115,26 @@ func TestNATSDecommissionConsumerRunReturnsSubscribeError(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, sentinel)
 	assert.Contains(t, err.Error(), "subscribe")
+}
+
+func TestNATSDecommissionConsumerRunStopsOnContextCancel(t *testing.T) {
+	sub := &stubDecommissionSubscriber{}
+	c := NewNATSDecommissionConsumer(sub, &stubDecommissionHandler{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Run(ctx)
+	}()
+
+	cancel()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Run did not return after context cancellation")
+	}
+
+	assert.Equal(t, subjectDecommissioned, sub.subject)
 }

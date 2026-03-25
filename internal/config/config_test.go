@@ -139,3 +139,30 @@ func TestGetDatabaseDSNMissingFile(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to read database password file")
 }
+
+func TestParseInt64EmptyLeavesValueUnchanged(t *testing.T) {
+	v := int64(42)
+
+	err := parseInt64("", &v)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), v)
+}
+
+func TestParseInt64ParsesValue(t *testing.T) {
+	v := int64(0)
+
+	err := parseInt64("60000", &v)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(60000), v)
+}
+
+func TestParseInt64InvalidValueReturnsError(t *testing.T) {
+	v := int64(42)
+
+	err := parseInt64("not-a-number", &v)
+
+	require.Error(t, err)
+	assert.Equal(t, int64(42), v)
+}
