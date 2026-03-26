@@ -1,30 +1,30 @@
 #!/usr/bin/env bash
-# Fetch a specific AsyncAPI spec from notip-infra at a given tag, filter it to the
-# current service's channels/operations, generate Go models, and commit.
+# Fetch a specific AsyncAPI spec from a producer repository at a given tag,
+# filter it to the current service's channels/operations, and generate Go models.
 #
 # Usage:
-#   ./scripts/generate-asyncapi.sh --tag v1.2.3 --file my-events.yaml
-#   ./scripts/generate-asyncapi.sh --tag v1.2.3 --file my-events.yaml --service my-service
+#   make generate-contracts REPO=notipswe/notip-infra TAG=main FILE=nats-contracts.yaml
 #
 # Arguments:
-#   --tag      Git tag or branch in notip-infra (required)
-#   --file     Filename inside api-contracts/asyncapi/ in notip-infra (required)
+#   --repo     Source GitHub repository (required)
+#   --tag      Git tag or branch in the source repo (required)
+#   --file     Filename inside api-contracts/asyncapi/ in the source repo (required)
 #   --service  Service tag to filter by (default: data-consumer)
-#
-# Requirements: gh CLI, node (for @asyncapi/cli), git
 set -euo pipefail
 
-REPO="notipswe/notip-infra"
 REMOTE_BASE="api-contracts/asyncapi"
 LOCAL_DIR="api-contracts/asyncapi"
+# IN GO: I modelli generati vanno nella cartella internal
 OUT_DIR="internal/generated/asyncapi"
 
+REPO=""
 SERVICE="data-consumer"
 TAG=""
 FILE=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
+    --repo)    REPO="$2";    shift 2 ;;
     --tag)     TAG="$2";     shift 2 ;;
     --file)    FILE="$2";    shift 2 ;;
     --service) SERVICE="$2"; shift 2 ;;
@@ -32,19 +32,30 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+[[ -z "$REPO" ]] && { echo "Error: --repo is required"; exit 1; }
 [[ -z "$TAG"  ]] && { echo "Error: --tag is required";  exit 1; }
 [[ -z "$FILE" ]] && { echo "Error: --file is required"; exit 1; }
 
 mkdir -p "$LOCAL_DIR"
 
 # ---------------------------------------------------------------------------
-# 1. Fetch the full spec from notip-infra (source of truth)
+# 1. Fetch the full spec from the producer repo
 # ---------------------------------------------------------------------------
 echo "Fetching ${FILE} from ${REPO}@${TAG}..."
-gh api "repos/${REPO}/contents/${REMOTE_BASE}/${FILE}?ref=${TAG}" \
-  --jq '.content' \
-  | tr -d '\n' \
-  | base64 -d > "${LOCAL_DIR}/${FILE}"
+gh api \
+  -H "Accept: application/vnd.github.raw" \
+  "repos/${REPO}/contents/${REMOTE_BASE}/${FILE}?ref=${TAG}" \
+  > "${LOCAL_DIR}/${FILE}"
+
+if [[ ! -s "${LOCAL_DIR}/${FILE}" ]]; then
+  echo "Error: fetched file is empty (${LOCAL_DIR}/${FILE}). Check --repo/--tag/--file and repository access."
+  exit 1
+fi
+
+if ! grep -Eq '^[[:space:]]*asyncapi[[:space:]]*:|"asyncapi"[[:space:]]*:' "${LOCAL_DIR}/${FILE}"; then
+  echo "Error: fetched file does not look like an AsyncAPI spec (missing top-level 'asyncapi' field)."
+  exit 1
+fi
 echo "  Saved → ${LOCAL_DIR}/${FILE}"
 
 # ---------------------------------------------------------------------------
@@ -67,14 +78,10 @@ OUTDIR="${OUT_DIR}/${NAME}"
 mkdir -p "${OUTDIR}"
 
 echo "Generating Go models → ${OUTDIR}/"
-npx @asyncapi/cli generate models go "${FILTERED_TMP}" --output "${OUTDIR}"
+# IN GO: cambiamo il target da typescript a go
+npx @asyncapi/cli generate models golang "${FILTERED_TMP}" --output "${OUTDIR}" --packageName natscontracts
 
-# ---------------------------------------------------------------------------
-# 4. Commit the raw spec + generated models
-# ---------------------------------------------------------------------------
-echo ""
-echo "Committing..."
-git add "${LOCAL_DIR}/${FILE}" "${OUTDIR}"
-git commit "${LOCAL_DIR}/${FILE}" "${OUTDIR}" -m "chore(contracts): fetch asyncapi ${FILE} from notip-infra@${TAG} (service: ${SERVICE})"
+# Formattiamo il codice generato per allinearlo agli standard Go
+go fmt "./${OUTDIR}/..."
 
-echo "Done."
+echo "Fatto! Modelli generati in ${OUTDIR}"

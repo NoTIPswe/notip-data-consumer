@@ -58,9 +58,9 @@ type AlertPayload struct {
 
 // AlertConfig is one entry from the Management API alert configuration list.
 type AlertConfig struct {
-	TenantID  string
-	GatewayID *string
-	TimeoutMs int64
+	TenantID  string  `json:"tenant_id"`
+	GatewayID *string `json:"gateway_id,omitempty"`
+	TimeoutMs int64   `json:"timeout_ms"`
 }
 
 // GatewayStatus represents the online/offline state of a gateway.
@@ -73,7 +73,7 @@ const (
 
 // GatewayStatusUpdate is the payload for the internal.mgmt.gateway.update-status RR call.
 type GatewayStatusUpdate struct {
-	GatewayID  string        `json:"gatewayId"`
+	GatewayID  string        `json:"gateway_id"`
 	Status     GatewayStatus `json:"status"`
-	LastSeenAt time.Time     `json:"lastSeenAt"`
+	LastSeenAt time.Time     `json:"last_seen_at"`
 }
