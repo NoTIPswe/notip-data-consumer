@@ -64,8 +64,17 @@ func (c *NATSRRClient) UpdateGatewayStatus(ctx context.Context, update model.Gat
 		return fmt.Errorf("marshal gateway status update: %w", err)
 	}
 
-	if _, err = c.nc.RequestWithContext(ctx, subjectGatewayUpdateStatus, body); err != nil {
+	resp, err := c.nc.RequestWithContext(ctx, subjectGatewayUpdateStatus, body)
+	if err != nil {
 		return fmt.Errorf("nats rr %s: %w", subjectGatewayUpdateStatus, err)
+	}
+
+	var result model.GatewayStatusUpdateResponse
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return fmt.Errorf("unmarshal gateway status update response: %w", err)
+	}
+	if !result.Success {
+		return fmt.Errorf("gateway status update rejected by management-api: %s", result.Error)
 	}
 
 	return nil

@@ -83,7 +83,7 @@ func TestNATSRRClientFetchAlertConfigsMalformedJSON(t *testing.T) {
 // ─── UpdateGatewayStatus ──────────────────────────────────────────────────────
 
 func TestNATSRRClientUpdateGatewayStatusSuccess(t *testing.T) {
-	mock := &mockRequester{resp: &nats.Msg{Data: []byte(`{"ok":true}`)}}
+	mock := &mockRequester{resp: &nats.Msg{Data: []byte(`{"success":true}`)}}
 	client := newRRClient(mock)
 
 	update := model.GatewayStatusUpdate{

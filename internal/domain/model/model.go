@@ -77,3 +77,9 @@ type GatewayStatusUpdate struct {
 	Status     GatewayStatus `json:"status"`
 	LastSeenAt time.Time     `json:"last_seen_at"`
 }
+
+// GatewayStatusUpdateResponse is the response from the internal.mgmt.gateway.update-status RR call.
+type GatewayStatusUpdateResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}

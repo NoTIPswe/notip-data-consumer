@@ -78,7 +78,7 @@ func TestNATSRRClientIntegrationUpdateGatewayStatus(t *testing.T) {
 		if err := json.Unmarshal(msg.Data, &update); err == nil {
 			received <- update
 		}
-		_ = msg.Respond([]byte("ok"))
+		_ = msg.Respond([]byte(`{"success":true}`))
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sub.Unsubscribe() })
