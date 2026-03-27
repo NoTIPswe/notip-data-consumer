@@ -16,7 +16,7 @@ Go microservice in the NoTIP platform. Consumes encrypted telemetry from NATS Je
 | Subject | Direction | Description |
 |---|---|---|
 | `telemetry.data.{tenantId}.{gwId}` | Gateway → consumer | Encrypted telemetry envelope |
-| `alert.{tenantId}.gw_offline` | Consumer → JetStream | Gateway-offline alert |
+| `alert.gw_offline.{tenantId}` | Consumer → JetStream | Gateway-offline alert |
 | `gateway.decommissioned.{tenantId}.{gwId}` | Management API → consumer | Decommission broadcast |
 | `internal.mgmt.alert-configs.list` | Consumer → Mgmt API (RR) | Fetch alert configurations |
 | `internal.mgmt.gateway.update-status` | Consumer → Mgmt API (RR) | Report gateway online/offline |

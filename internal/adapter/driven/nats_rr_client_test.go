@@ -20,16 +20,32 @@ type mockRequester struct {
 	payload []byte
 	resp    *nats.Msg
 	err     error
+	calls   int
+	errs    []error
 }
 
 func (m *mockRequester) RequestWithContext(_ context.Context, subj string, data []byte) (*nats.Msg, error) {
+	m.calls++
 	m.subject = subj
 	m.payload = data
+	if len(m.errs) > 0 {
+		err := m.errs[0]
+		m.errs = m.errs[1:]
+		if err != nil {
+			return nil, err
+		}
+	}
 	return m.resp, m.err
 }
 
 func newRRClient(r natsRequester) *NATSRRClient {
-	return &NATSRRClient{nc: r, timeout: 5 * time.Second}
+	return &NATSRRClient{
+		nc:         r,
+		timeout:    5 * time.Second,
+		maxRetries: 3,
+		backoff:    []time.Duration{time.Second, 2 * time.Second, 4 * time.Second},
+		sleep:      func(time.Duration) {},
+	}
 }
 
 func TestNewNATSRRClientSetsFields(t *testing.T) {
@@ -112,4 +128,29 @@ func TestNATSRRClientUpdateGatewayStatusNATSError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), subjectGatewayUpdateStatus)
+}
+
+func TestNATSRRClientFetchAlertConfigsRetriesThenSucceeds(t *testing.T) {
+	mock := &mockRequester{
+		errs: []error{errors.New("timeout 1"), errors.New("timeout 2"), nil},
+		resp: &nats.Msg{Data: []byte(`[]`)},
+	}
+	client := newRRClient(mock)
+
+	got, err := client.FetchAlertConfigs(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, 3, mock.calls)
+	assert.Empty(t, got)
+}
+
+func TestNATSRRClientFetchAlertConfigsExhaustsRetries(t *testing.T) {
+	mock := &mockRequester{err: errors.New("no responders")}
+	client := newRRClient(mock)
+
+	_, err := client.FetchAlertConfigs(context.Background())
+
+	require.Error(t, err)
+	assert.Equal(t, 4, mock.calls) // 1 attempt + 3 retries
+	assert.Contains(t, err.Error(), "exhausted retries")
 }

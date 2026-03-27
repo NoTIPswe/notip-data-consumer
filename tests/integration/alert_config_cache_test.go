@@ -148,10 +148,12 @@ func TestAlertConfigCacheIntegrationFallbackToDefaultOnNoResponder(t *testing.T)
 	defer cancel()
 	go cache.Run(ctx)
 
-	// Give the initial fetch retries time to exhaust.
-	time.Sleep(2 * time.Second)
+	// Each FetchAlertConfigs call retries 3x inside NATSRRClient (200ms × 4 attempts + 1s+2s+4s backoff ≈ 7.8s).
+	// fetchWithBackoff runs 2 attempts, so we need up to ~20s for errors to accumulate.
+	require.Eventually(t, func() bool {
+		return m.refreshErrors.Load() > 0
+	}, 25*time.Second, 200*time.Millisecond, "expected at least one refresh error")
 
 	// Should still return the default since no responder ever answered.
 	assert.Equal(t, int64(77777), cache.TimeoutFor("any-tenant", "any-gw"))
-	assert.Greater(t, m.refreshErrors.Load(), int64(0), "expected at least one refresh error")
 }

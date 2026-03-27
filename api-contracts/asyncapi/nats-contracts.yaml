@@ -54,8 +54,14 @@ channels:
       operationId: publishTelemetry
       summary: Gateway publishes an encrypted sensor reading.
       tags:
-        - name: data-consumer
         - name: simulator-backend
+      message:
+        $ref: "#/components/messages/TelemetryMessage"
+    subscribe:
+      operationId: receiveTelemetry
+      summary: Data Consumer receives encrypted telemetry.
+      tags:
+        - name: data-consumer
       message:
         $ref: "#/components/messages/TelemetryMessage"
 
@@ -79,18 +85,18 @@ channels:
         schema:
           type: string
           format: uuid
-    subscribe:
-      operationId: receiveCommand
-      summary: Gateway receives a command.
-      tags:
-        - name: simulator-backend
-      message:
-        $ref: "#/components/messages/GatewayCommand"
     publish:
       operationId: dispatchCommand
       summary: Management API dispatches a command to a gateway.
       tags:
         - name: management-api
+      message:
+        $ref: "#/components/messages/GatewayCommand"
+    subscribe:
+      operationId: receiveCommand
+      summary: Gateway receives a command.
+      tags:
+        - name: simulator-backend
       message:
         $ref: "#/components/messages/GatewayCommand"
 
@@ -117,14 +123,20 @@ channels:
       operationId: publishCommandAck
       summary: Gateway acknowledges command execution.
       tags:
-        - name: management-api
         - name: simulator-backend
+      message:
+        $ref: "#/components/messages/CommandAck"
+    subscribe:
+      operationId: receiveCommandAck
+      summary: Management API receives a command acknowledgement.
+      tags:
+        - name: management-api
       message:
         $ref: "#/components/messages/CommandAck"
 
   # ── Alerts ───────────────────────────────────────────────────────────────
 
-  alert.{tenantId}.gw_offline:
+  alert.gw_offline.{tenantId}:
     description: |
       Alert emitted when a gateway goes offline (heartbeat timeout exceeded).
       Stream: ALERTS (max_age: unlimited, storage: file).
@@ -142,6 +154,12 @@ channels:
       summary: Data Consumer publishes a gateway-offline alert.
       tags:
         - name: data-consumer
+      message:
+        $ref: "#/components/messages/GatewayOfflineAlert"
+    subscribe:
+      operationId: receiveGatewayOfflineAlert
+      summary: Management API receives a gateway-offline alert.
+      tags:
         - name: management-api
       message:
         $ref: "#/components/messages/GatewayOfflineAlert"
@@ -170,6 +188,12 @@ channels:
       summary: Management API signals gateway decommissioning.
       tags:
         - name: management-api
+      message:
+        $ref: "#/components/messages/GatewayDecommissioned"
+    subscribe:
+      operationId: receiveDecommission
+      summary: Data Consumer and Simulator react to gateway decommissioning.
+      tags:
         - name: data-consumer
         - name: simulator-backend
       message:
@@ -195,6 +219,14 @@ channels:
       tags:
         - name: management-api
         - name: provisioning-service
+      message:
+        $ref: "#/components/messages/AuditLogEntry"
+    subscribe:
+      operationId: consumeAuditLog
+      summary: Audit log archiver consumes entries for long-term storage.
+      description: Consumer not yet implemented — placeholder for future audit-log-archiver service.
+      tags:
+        - name: audit-log-archiver
       message:
         $ref: "#/components/messages/AuditLogEntry"
 
@@ -297,6 +329,9 @@ channels:
           properties:
             success:
               type: boolean
+            error:
+              type: string
+              description: Error detail, present only on failure.
 
   internal.cost:
     description: |

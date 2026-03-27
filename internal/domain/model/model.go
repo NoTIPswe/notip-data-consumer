@@ -23,11 +23,22 @@ func (o OpaqueBlob) MarshalJSON() ([]byte, error) {
 	return json.Marshal(o.Value)
 }
 
+// SensorType enumerates the valid sensor types from the AsyncAPI contract.
+type SensorType string
+
+const (
+	SensorTypeTemperature SensorType = "temperature"
+	SensorTypeHumidity    SensorType = "humidity"
+	SensorTypeMovement    SensorType = "movement"
+	SensorTypePressure    SensorType = "pressure"
+	SensorTypeBiometric   SensorType = "biometric"
+)
+
 // TelemetryEnvelope is the wire format of a NATS message on telemetry.data.{tenantId}.{gwId}.
 type TelemetryEnvelope struct {
 	GatewayID     string     `json:"gatewayId"`
 	SensorID      string     `json:"sensorId"`
-	SensorType    string     `json:"sensorType"`
+	SensorType    SensorType `json:"sensorType"`
 	Timestamp     time.Time  `json:"timestamp"`
 	KeyVersion    int        `json:"keyVersion"`
 	EncryptedData OpaqueBlob `json:"encryptedData"`
@@ -48,7 +59,7 @@ type TelemetryRow struct {
 	KeyVersion    int
 }
 
-// AlertPayload is published to alert.{tenantId}.gw_offline on an offline transition.
+// AlertPayload is published to alert.gw_offline.{tenantId} on an offline transition.
 type AlertPayload struct {
 	GatewayID string    `json:"gatewayId"`
 	LastSeen  time.Time `json:"lastSeen"`

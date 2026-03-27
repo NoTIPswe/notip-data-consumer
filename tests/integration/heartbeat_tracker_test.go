@@ -99,7 +99,7 @@ func TestHeartbeatTrackerIntegrationFullLifecycle(t *testing.T) {
 
 	// Subscribe to the alert subject BEFORE any alerts are published.
 	alertSub, err := js.SubscribeSync(
-		fmt.Sprintf("alert.%s.gw_offline", tenantID),
+		fmt.Sprintf("alert.gw_offline.%s", tenantID),
 		nats.Durable("hb-alert-sub"),
 	)
 	require.NoError(t, err)
@@ -200,7 +200,7 @@ func TestHeartbeatTrackerIntegrationGracePeriodSuppressesAlerts(t *testing.T) {
 	// Use a unique durable name + DeliverNew to avoid picking up stale messages
 	// from prior tests that published to alert.> subjects.
 	alertSub, err := js.SubscribeSync(
-		"alert.tenant-grace.gw_offline",
+		"alert.gw_offline.tenant-grace",
 		nats.Durable(fmt.Sprintf("grace-alert-sub-%d", time.Now().UnixNano())),
 		nats.DeliverNew(),
 	)
@@ -256,7 +256,7 @@ func TestHeartbeatTrackerIntegrationDecommissionRemovesGateway(t *testing.T) {
 	require.NoError(t, err)
 
 	alertSub, err := js.SubscribeSync(
-		"alert.tenant-dec.gw_offline",
+		"alert.gw_offline.tenant-dec",
 		nats.Durable(fmt.Sprintf("dec-alert-sub-%d", time.Now().UnixNano())),
 		nats.DeliverNew(),
 	)

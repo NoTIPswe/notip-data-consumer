@@ -296,6 +296,15 @@ func TestNATSTelemetryConsumerExtractTenantIDMalformed(t *testing.T) {
 	assert.Contains(t, err.Error(), "unexpected telemetry subject")
 }
 
+func TestNATSTelemetryConsumerExtractTenantIDRejectsExtraTokens(t *testing.T) {
+	c, _ := newConsumer(&stubTelemetryHandler{}, &stubTelemetryWriter{})
+
+	_, err := c.extractTenantID("telemetry.data.tenant-1.gw-42.extra")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unexpected telemetry subject")
+}
+
 // ─── buildRow ─────────────────────────────────────────────────────────────────
 
 func TestNATSTelemetryConsumerBuildRowMapsFields(t *testing.T) {

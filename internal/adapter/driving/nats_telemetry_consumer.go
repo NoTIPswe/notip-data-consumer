@@ -190,7 +190,7 @@ func (c *NATSTelemetryConsumer) processMessage(ctx context.Context, msg *nats.Ms
 // extractTenantID parses telemetry.data.{tenantID}.{gwID} — tenantID is at index 2.
 func (c *NATSTelemetryConsumer) extractTenantID(subject string) (string, error) {
 	parts := strings.Split(subject, ".")
-	if len(parts) < 4 {
+	if len(parts) != 4 {
 		return "", fmt.Errorf("unexpected telemetry subject: %q", subject)
 	}
 	return parts[2], nil
@@ -203,7 +203,7 @@ func (c *NATSTelemetryConsumer) buildRow(tenantID string, env model.TelemetryEnv
 		TenantID:      tenantID,
 		GatewayID:     env.GatewayID,
 		SensorID:      env.SensorID,
-		SensorType:    env.SensorType,
+		SensorType:    string(env.SensorType),
 		EncryptedData: env.EncryptedData,
 		IV:            env.IV,
 		AuthTag:       env.AuthTag,

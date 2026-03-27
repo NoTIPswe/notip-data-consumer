@@ -3,10 +3,10 @@ TAG ?= main
 FILE ?= nats-contracts.yaml
 SERVICE ?= data-consumer
 
-.PHONY: generate-contracts test integration-test lint fmt all
+.PHONY: fetch-contracts test integration-test lint fmt all
 
-generate-contracts:
-	@echo "Generating contracts..."
+fetch-contracts:
+	@echo "Fetching contracts..."
 	bash scripts/generate-asyncapi.sh --repo $(REPO) --tag $(TAG) --file $(FILE) --service $(SERVICE)
 
 test:

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Fetch a specific AsyncAPI spec from a producer repository at a given tag,
-# filter it to the current service's channels/operations, and generate Go models.
+# Fetch a specific AsyncAPI spec from a producer repository at a given tag.
 #
 # Usage:
-#   make generate-contracts REPO=notipswe/notip-infra TAG=main FILE=nats-contracts.yaml
+#   make fetch-contracts REPO=notipswe/notip-infra TAG=main FILE=nats-contracts.yaml
 #
 # Arguments:
 #   --repo     Source GitHub repository (required)
@@ -58,30 +57,30 @@ if ! grep -Eq '^[[:space:]]*asyncapi[[:space:]]*:|"asyncapi"[[:space:]]*:' "${LO
 fi
 echo "  Saved → ${LOCAL_DIR}/${FILE}"
 
-# ---------------------------------------------------------------------------
-# 2. Filter the spec to only entries tagged with the service name
-# ---------------------------------------------------------------------------
-NAME="${FILE%.*}"
-FILTERED_TMP=$(mktemp /tmp/asyncapi-filtered-XXXXXX.yaml)
-trap 'rm -f "$FILTERED_TMP"' EXIT
+# # ---------------------------------------------------------------------------
+# # 2. Filter the spec to only entries tagged with the service name
+# # ---------------------------------------------------------------------------
+# NAME="${FILE%.*}"
+# FILTERED_TMP=$(mktemp /tmp/asyncapi-filtered-XXXXXX.yaml)
+# trap 'rm -f "$FILTERED_TMP"' EXIT
 
-echo "Filtering spec for service '${SERVICE}'..."
-node scripts/filter-asyncapi.mjs \
-  --input  "${LOCAL_DIR}/${FILE}" \
-  --output "${FILTERED_TMP}" \
-  --service "${SERVICE}"
+# echo "Filtering spec for service '${SERVICE}'..."
+# node scripts/filter-asyncapi.mjs \
+#   --input  "${LOCAL_DIR}/${FILE}" \
+#   --output "${FILTERED_TMP}" \
+#   --service "${SERVICE}"
 
-# ---------------------------------------------------------------------------
-# 3. Generate Go models from the filtered spec
-# ---------------------------------------------------------------------------
-OUTDIR="${OUT_DIR}/${NAME}"
-mkdir -p "${OUTDIR}"
+# # ---------------------------------------------------------------------------
+# # 3. Generate Go models from the filtered spec
+# # ---------------------------------------------------------------------------
+# OUTDIR="${OUT_DIR}/${NAME}"
+# mkdir -p "${OUTDIR}"
 
-echo "Generating Go models → ${OUTDIR}/"
-# IN GO: cambiamo il target da typescript a go
-npx @asyncapi/cli generate models golang "${FILTERED_TMP}" --output "${OUTDIR}" --packageName natscontracts
+# echo "Generating Go models → ${OUTDIR}/"
+# # IN GO: cambiamo il target da typescript a go
+# npx @asyncapi/cli generate models golang "${FILTERED_TMP}" --output "${OUTDIR}" --packageName natscontracts
 
-# Formattiamo il codice generato per allinearlo agli standard Go
-go fmt "./${OUTDIR}/..."
+# # Formattiamo il codice generato per allinearlo agli standard Go
+# go fmt "./${OUTDIR}/..."
 
-echo "Fatto! Modelli generati in ${OUTDIR}"
+# echo "Done! Generated models in ${OUTDIR}"
