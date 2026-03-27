@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/notipswe/notip-go-dev:v0.0.1
+      options: --user root 
 
     steps:
       - name: Checkout code
@@ -49,6 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/notipswe/notip-go-dev:v0.0.1
+      options: --user root
 
     steps:
       - name: Checkout code
@@ -82,3 +84,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  integration:
+    name: Integration Tests
+    needs: [lint]
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/notipswe/notip-go-dev:v0.0.1
+      options: --user root
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run integration tests
+        run: go test -tags=integration -timeout=5m ./tests/integration/...

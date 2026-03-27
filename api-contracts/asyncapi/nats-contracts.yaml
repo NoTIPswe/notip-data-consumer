@@ -1,0 +1,650 @@
+asyncapi: "2.6.0"
+
+info:
+  title: NoTIP NATS Contracts
+  version: "1.0.0"
+  description: |
+    Authoritative subject and stream definitions for the NoTIP NATS JetStream cluster.
+
+    Transport: NATS JetStream with mTLS on port 4222 (all clients present a cert signed by
+    the internal CA). Backend microservices connect over the internal Docker network and are
+    mapped to full-access authorization users by cert CN (verify_and_map: true).
+
+    Subject naming convention: {domain}.{action}.{tenantId}.{resourceId}
+
+    Two categories of communication:
+    - JetStream subjects (persistent, §1): async events between services and gateways
+    - Request-Reply subjects (ephemeral, §2): synchronous internal service-to-service calls
+      that replace all inter-service HTTP. These subjects are NOT accessible from gateways.
+
+servers:
+  internal:
+    url: tls://nats:4222
+    protocol: nats
+    description: Internal Docker network. mTLS required.
+
+defaultContentType: application/json
+
+# ────────────────────────────────────────────────────────────────────────────
+# §1 — JetStream Channels (persistent, async)
+# ────────────────────────────────────────────────────────────────────────────
+
+channels:
+
+  # ── Telemetry ────────────────────────────────────────────────────────────
+
+  telemetry.data.{tenantId}.{gatewayId}:
+    description: |
+      Encrypted BLE telemetry from an IoT gateway.
+      Stream: TELEMETRY (max_age: 30 days, storage: file).
+      Publisher: gateway (cert CN = gateway UUID, mTLS port 4222).
+      Consumer: data-consumer (durable, explicit ack).
+    parameters:
+      tenantId:
+        description: UUID v4 of the tenant owning the gateway.
+        schema:
+          type: string
+          format: uuid
+      gatewayId:
+        description: UUID v4 of the publishing gateway.
+        schema:
+          type: string
+          format: uuid
+    publish:
+      operationId: publishTelemetry
+      summary: Gateway publishes an encrypted sensor reading.
+      tags:
+        - name: simulator-backend
+      message:
+        $ref: "#/components/messages/TelemetryMessage"
+    subscribe:
+      operationId: receiveTelemetry
+      summary: Data Consumer receives encrypted telemetry.
+      tags:
+        - name: data-consumer
+      message:
+        $ref: "#/components/messages/TelemetryMessage"
+
+  # ── Commands ─────────────────────────────────────────────────────────────
+
+  command.gw.{tenantId}.{gatewayId}:
+    description: |
+      Command dispatched from management-api to a specific gateway.
+      Stream: COMMANDS (max_age: 75s, storage: file).
+      Publisher: management-api.
+      Consumer: gateway (durable push consumer, durable_name: gw-{gatewayId}).
+      Gateway discards if now - issuedAt > 60s (application-level TTL).
+    parameters:
+      tenantId:
+        description: UUID v4 of the tenant owning the gateway.
+        schema:
+          type: string
+          format: uuid
+      gatewayId:
+        description: UUID v4 of the target gateway.
+        schema:
+          type: string
+          format: uuid
+    publish:
+      operationId: dispatchCommand
+      summary: Management API dispatches a command to a gateway.
+      tags:
+        - name: management-api
+      message:
+        $ref: "#/components/messages/GatewayCommand"
+    subscribe:
+      operationId: receiveCommand
+      summary: Gateway receives a command.
+      tags:
+        - name: simulator-backend
+      message:
+        $ref: "#/components/messages/GatewayCommand"
+
+  # ── Command ACKs ──────────────────────────────────────────────────────────
+
+  command.ack.{tenantId}.{gatewayId}:
+    description: |
+      Command acknowledgement published by the gateway after execution or discard.
+      Stream: COMMAND_ACKS (max_age: 300s, storage: file).
+      Publisher: gateway.
+      Consumer: management-api (durable, durable_name: mgmt-api-ack-consumer).
+    parameters:
+      tenantId:
+        description: UUID v4 of the tenant.
+        schema:
+          type: string
+          format: uuid
+      gatewayId:
+        description: UUID v4 of the gateway that executed the command.
+        schema:
+          type: string
+          format: uuid
+    publish:
+      operationId: publishCommandAck
+      summary: Gateway acknowledges command execution.
+      tags:
+        - name: simulator-backend
+      message:
+        $ref: "#/components/messages/CommandAck"
+    subscribe:
+      operationId: receiveCommandAck
+      summary: Management API receives a command acknowledgement.
+      tags:
+        - name: management-api
+      message:
+        $ref: "#/components/messages/CommandAck"
+
+  # ── Alerts ───────────────────────────────────────────────────────────────
+
+  alert.gw_offline.{tenantId}:
+    description: |
+      Alert emitted when a gateway goes offline (heartbeat timeout exceeded).
+      Stream: ALERTS (max_age: unlimited, storage: file).
+      Publisher: data-consumer.
+      Consumer: management-api (durable, durable_name: mgmt-alert-consumer).
+      Management API persists alerts in the DB.
+    parameters:
+      tenantId:
+        description: UUID v4 of the tenant owning the offline gateway.
+        schema:
+          type: string
+          format: uuid
+    publish:
+      operationId: publishGatewayOfflineAlert
+      summary: Data Consumer publishes a gateway-offline alert.
+      tags:
+        - name: data-consumer
+      message:
+        $ref: "#/components/messages/GatewayOfflineAlert"
+    subscribe:
+      operationId: receiveGatewayOfflineAlert
+      summary: Management API receives a gateway-offline alert.
+      tags:
+        - name: management-api
+      message:
+        $ref: "#/components/messages/GatewayOfflineAlert"
+
+  # ── Decommissioning ──────────────────────────────────────────────────────
+
+  gateway.decommissioned.{tenantId}.{gatewayId}:
+    description: |
+      Emitted when a gateway is decommissioned via the management API.
+      Stream: DECOMMISSION (max_age: 24h, storage: file).
+      Publisher: management-api.
+      Consumers: data-consumer (removes from heartbeat map), simulator (stops goroutine).
+    parameters:
+      tenantId:
+        description: UUID v4 of the tenant.
+        schema:
+          type: string
+          format: uuid
+      gatewayId:
+        description: UUID v4 of the decommissioned gateway.
+        schema:
+          type: string
+          format: uuid
+    publish:
+      operationId: publishDecommission
+      summary: Management API signals gateway decommissioning.
+      tags:
+        - name: management-api
+      message:
+        $ref: "#/components/messages/GatewayDecommissioned"
+    subscribe:
+      operationId: receiveDecommission
+      summary: Data Consumer and Simulator react to gateway decommissioning.
+      tags:
+        - name: data-consumer
+        - name: simulator-backend
+      message:
+        $ref: "#/components/messages/GatewayDecommissioned"
+
+  # ── Audit Log ────────────────────────────────────────────────────────────
+
+  log.audit.{tenantId}:
+    description: |
+      Structured audit log entries from backend services.
+      Stream: AUDIT_LOG (max_age: 90 days, storage: file). Priority: desirable.
+      Publishers: management-api, provisioning-service.
+      Consumers: (future) audit log archiver.
+    parameters:
+      tenantId:
+        description: UUID v4 of the tenant context.
+        schema:
+          type: string
+          format: uuid
+    publish:
+      operationId: publishAuditLog
+      summary: Backend service publishes an audit log entry.
+      tags:
+        - name: management-api
+        - name: provisioning-service
+      message:
+        $ref: "#/components/messages/AuditLogEntry"
+    subscribe:
+      operationId: consumeAuditLog
+      summary: Audit log archiver consumes entries for long-term storage.
+      description: Consumer not yet implemented — placeholder for future audit-log-archiver service.
+      tags:
+        - name: audit-log-archiver
+      message:
+        $ref: "#/components/messages/AuditLogEntry"
+
+# ────────────────────────────────────────────────────────────────────────────
+# §2 — Request-Reply Channels (internal service-to-service, no JetStream)
+#
+# These replace ALL inter-service HTTP. Not accessible from IoT gateways.
+# Timeout: 5s. Retry: 3x with backoff 1s/2s/4s. On failure: 503 to caller.
+# Startup operations (alert-configs.list): 10 retries, backoff up to 30s.
+# ────────────────────────────────────────────────────────────────────────────
+
+  internal.mgmt.factory.validate:
+    description: |
+      Provisioning Service validates a gateway factory_key against the Management API.
+      Called during the /provision/onboard flow.
+      Requester: provisioning-service. Responder: management-api.
+    publish:
+      operationId: validateFactoryKey
+      summary: Provisioning asks Management API to validate factory credentials.
+      tags:
+        - name: provisioning-service
+      message:
+        $ref: "#/components/messages/FactoryValidateRequest"
+    subscribe:
+      operationId: respondFactoryValidate
+      summary: Management API responds with gateway identity or error.
+      tags:
+        - name: management-api
+      message:
+        $ref: "#/components/messages/FactoryValidateResponse"
+
+  internal.mgmt.provisioning.complete:
+    description: |
+      Provisioning Service notifies Management API that provisioning is complete.
+      Management API stores the AES key and marks the gateway as provisioned.
+      Atomic operation: saves key, sets provisioned=true, nulls factory_key_hash.
+      Requester: provisioning-service. Responder: management-api.
+    publish:
+      operationId: completeProvisioning
+      summary: Provisioning Service reports successful provisioning.
+      tags:
+        - name: provisioning-service
+      message:
+        $ref: "#/components/messages/ProvisioningCompleteRequest"
+    subscribe:
+      operationId: respondProvisioningComplete
+      summary: Management API confirms persistence.
+      tags:
+        - name: management-api
+      message:
+        $ref: "#/components/messages/ProvisioningCompleteResponse"
+
+  internal.mgmt.alert-configs.list:
+    description: |
+      Data Consumer fetches all alert configurations from Management API.
+      Called at startup + every 5 minutes.
+      Requester: data-consumer. Responder: management-api.
+    publish:
+      operationId: listAlertConfigs
+      summary: Data Consumer requests all tenant alert configurations.
+      tags:
+        - name: data-consumer
+      message:
+        name: AlertConfigsListRequest
+        payload:
+          title: AlertConfigsListRequest
+          type: object
+          description: Empty request body.
+    subscribe:
+      operationId: respondAlertConfigs
+      summary: Management API returns all alert configurations.
+      tags:
+        - name: management-api
+      message:
+        $ref: "#/components/messages/AlertConfigsListResponse"
+
+  internal.mgmt.gateway.update-status:
+    description: |
+      Data Consumer notifies Management API of a gateway status transition.
+      Called when heartbeat transitions gateway to online or offline.
+      Requester: data-consumer. Responder: management-api.
+    publish:
+      operationId: updateGatewayStatus
+      summary: Data Consumer reports a gateway status change.
+      tags:
+        - name: data-consumer
+      message:
+        $ref: "#/components/messages/GatewayStatusUpdateRequest"
+    subscribe:
+      operationId: respondGatewayStatusUpdate
+      summary: Management API confirms status update.
+      tags:
+        - name: management-api
+      message:
+        name: GatewayStatusUpdateResponse
+        payload:
+          title: GatewayStatusUpdateResponse
+          type: object
+          required: [success]
+          properties:
+            success:
+              type: boolean
+            error:
+              type: string
+              description: Error detail, present only on failure.
+
+  internal.cost:
+    description: |
+      Management API queries Data API for tenant storage usage.
+      Used by GET /api/mgmt/costs to compute per-tenant storage cost.
+      Requester: management-api. Responder: data-api.
+    publish:
+      operationId: requestCost
+      summary: Management API requests storage size for a tenant.
+      tags:
+        - name: management-api
+      message:
+        $ref: "#/components/messages/CostRequest"
+    subscribe:
+      operationId: respondCost
+      summary: Data API returns storage size from TimescaleDB.
+      tags:
+        - name: data-api
+      message:
+        $ref: "#/components/messages/CostResponse"
+
+# ────────────────────────────────────────────────────────────────────────────
+# COMPONENTS
+# ────────────────────────────────────────────────────────────────────────────
+
+components:
+
+  messages:
+
+    TelemetryMessage:
+      name: TelemetryMessage
+      title: Encrypted telemetry envelope
+      description: |
+        See contracts/crypto-contract.md for full specification.
+        Cloud components treat encryptedData/iv/authTag as opaque blobs — never decrypt.
+      contentType: application/json
+      payload:
+        title: TelemetryMessage
+        type: object
+        required: [gatewayId, sensorId, sensorType, timestamp, keyVersion, encryptedData, iv, authTag]
+        properties:
+          gatewayId:
+            type: string
+            format: uuid
+          sensorId:
+            type: string
+            format: uuid
+            description: Self-declared by firmware. Not registered in DB. May move between gateways.
+          sensorType:
+            title: SensorType
+            type: string
+            enum: [temperature, humidity, movement, pressure, biometric]
+          timestamp:
+            type: string
+            format: date-time
+            description: Gateway-local measurement time (ISO 8601 UTC).
+          keyVersion:
+            type: integer
+            description: AES key version. Clients use this to detect key rotation.
+          encryptedData:
+            type: string
+            description: Base64-encoded AES-256-GCM ciphertext of the sensor reading.
+          iv:
+            type: string
+            description: Base64-encoded 12-byte (96-bit) random nonce. Fresh per message.
+          authTag:
+            type: string
+            description: Base64-encoded 16-byte (128-bit) GCM authentication tag.
+
+    GatewayCommand:
+      name: GatewayCommand
+      title: Command for a gateway
+      contentType: application/json
+      payload:
+        title: GatewayCommand
+        type: object
+        required: [commandId, type, issuedAt]
+        properties:
+          commandId:
+            type: string
+            format: uuid
+          type:
+            type: string
+            enum: [config_update, firmware_push]
+          issuedAt:
+            type: string
+            format: date-time
+            description: |
+              UTC time when the command was created.
+              Gateways MUST discard commands where now - issuedAt > 60s.
+          payload:
+            type: object
+            description: |
+              config_update: { send_frequency_ms?, status? }
+              firmware_push: { firmware_version, download_url }
+            additionalProperties: true
+
+    CommandAck:
+      name: CommandAck
+      title: Command acknowledgement from gateway
+      contentType: application/json
+      payload:
+        title: CommandAck
+        type: object
+        required: [commandId, status, timestamp]
+        properties:
+          commandId:
+            type: string
+            format: uuid
+          status:
+            type: string
+            enum: [ack, nack, expired]
+            description: |
+              ack: gateway executed successfully.
+              nack: gateway execution failed.
+              expired: gateway discarded because now - issuedAt > 60s.
+          message:
+            type: string
+            description: Optional error detail (present on nack).
+          timestamp:
+            type: string
+            format: date-time
+
+    GatewayOfflineAlert:
+      name: GatewayOfflineAlert
+      title: Gateway offline alert
+      contentType: application/json
+      payload:
+        title: GatewayOfflineAlert
+        type: object
+        required: [gatewayId, lastSeen, timeoutMs, timestamp]
+        properties:
+          gatewayId:
+            type: string
+            format: uuid
+          lastSeen:
+            type: string
+            format: date-time
+            description: Timestamp of the last received telemetry.
+          timeoutMs:
+            type: integer
+            description: Configured heartbeat timeout that was exceeded.
+          timestamp:
+            type: string
+            format: date-time
+            description: When the data-consumer detected the timeout.
+
+    GatewayDecommissioned:
+      name: GatewayDecommissioned
+      title: Gateway decommissioned event
+      contentType: application/json
+      payload:
+        title: GatewayDecommissioned
+        type: object
+        required: [gatewayId, timestamp]
+        properties:
+          gatewayId:
+            type: string
+            format: uuid
+          timestamp:
+            type: string
+            format: date-time
+
+    AuditLogEntry:
+      name: AuditLogEntry
+      title: Audit log entry
+      contentType: application/json
+      payload:
+        title: AuditLogEntry
+        type: object
+        required: [userId, action, resource, timestamp]
+        properties:
+          userId:
+            type: string
+            description: User ID (sub claim) or service account that triggered the action.
+          action:
+            type: string
+            description: Machine-readable action name (e.g. GATEWAY_PROVISIONED).
+          resource:
+            type: string
+            description: Affected resource identifier.
+          details:
+            type: object
+            additionalProperties: true
+          timestamp:
+            type: string
+            format: date-time
+
+    FactoryValidateRequest:
+      name: FactoryValidateRequest
+      contentType: application/json
+      payload:
+        title: FactoryValidateRequest
+        type: object
+        required: [factory_id, factory_key]
+        properties:
+          factory_id:
+            type: string
+          factory_key:
+            type: string
+
+    FactoryValidateResponse:
+      name: FactoryValidateResponse
+      contentType: application/json
+      payload:
+        title: FactoryValidateResponse
+        oneOf:
+          - type: object
+            required: [gateway_id, tenant_id]
+            properties:
+              gateway_id:
+                type: string
+                format: uuid
+              tenant_id:
+                type: string
+                format: uuid
+          - type: object
+            required: [error]
+            properties:
+              error:
+                type: string
+                enum: [INVALID, ALREADY_PROVISIONED]
+
+    ProvisioningCompleteRequest:
+      name: ProvisioningCompleteRequest
+      contentType: application/json
+      payload:
+        title: ProvisioningCompleteRequest
+        type: object
+        required: [gateway_id, key_material, key_version]
+        properties:
+          gateway_id:
+            type: string
+            format: uuid
+          key_material:
+            type: string
+            description: Base64-encoded 256-bit AES key (plaintext — transmitted over internal NATS mTLS only).
+          key_version:
+            type: integer
+
+    ProvisioningCompleteResponse:
+      name: ProvisioningCompleteResponse
+      contentType: application/json
+      payload:
+        title: ProvisioningCompleteResponse
+        type: object
+        required: [success]
+        properties:
+          success:
+            type: boolean
+          error:
+            type: string
+
+    AlertConfigsListResponse:
+      name: AlertConfigsListResponse
+      contentType: application/json
+      payload:
+        title: AlertConfigsListResponse
+        type: array
+        items:
+          title: AlertConfig
+          type: object
+          required: [tenant_id, timeout_ms]
+          properties:
+            tenant_id:
+              type: string
+              format: uuid
+            gateway_id:
+              type: string
+              format: uuid
+              description: Present only for per-gateway overrides. Absent for tenant default.
+            timeout_ms:
+              type: integer
+
+    GatewayStatusUpdateRequest:
+      name: GatewayStatusUpdateRequest
+      contentType: application/json
+      payload:
+        title: GatewayStatusUpdateRequest
+        type: object
+        required: [gateway_id, status, last_seen_at]
+        properties:
+          gateway_id:
+            type: string
+            format: uuid
+          status:
+            title: GatewayStatus
+            type: string
+            enum: [online, offline]
+          last_seen_at:
+            type: string
+            format: date-time
+
+    CostRequest:
+      name: CostRequest
+      contentType: application/json
+      payload:
+        title: CostRequest
+        type: object
+        required: [tenant_id]
+        properties:
+          tenant_id:
+            type: string
+            format: uuid
+
+    CostResponse:
+      name: CostResponse
+      contentType: application/json
+      payload:
+        title: CostResponse
+        type: object
+        required: [dataSizeAtRest]
+        properties:
+          dataSizeAtRest:
+            type: number
+            description: Storage used by this tenant in bytes (from TimescaleDB).
