@@ -44,7 +44,7 @@ func newRRClient(r natsRequester) *NATSRRClient {
 		timeout:    5 * time.Second,
 		maxRetries: 3,
 		backoff:    []time.Duration{time.Second, 2 * time.Second, 4 * time.Second},
-		sleep:      func(time.Duration) {},
+		sleep:      func(time.Duration) { /* do nothing */ },
 	}
 }
 
