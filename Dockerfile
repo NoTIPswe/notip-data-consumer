@@ -8,7 +8,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o notip-app .
+RUN CGO_ENABLED=0 GOOS=linux go build -o notip-app ./cmd/consumer
 
 # ─── Production ─────────────────────────────────────────────────────────────
 FROM ghcr.io/notipswe/notip-go-base:v0.0.1 AS prod
@@ -25,7 +25,8 @@ COPY --chown=appuser:appuser --from=builder /app/notip-app .
 
 USER appuser
 
-# EXPOSE 8080
-# HEALTHCHECK ...
+EXPOSE 9090
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD ["curl", "-fsS", "http://localhost:9090/healthz"]
 
 CMD ["./notip-app"]

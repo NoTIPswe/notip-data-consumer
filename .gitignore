@@ -32,8 +32,10 @@ certs/
 # --- Ignored folder ---
 ignored/
 
-# --- Generated ---
-api-contracts/
-
 # --- npm semantic versioning ---
 node_modules
+
+# --- Keep Generated API Contracts Tracked ---
+!openapi.json
+!src/generated/
+!src/generated/**

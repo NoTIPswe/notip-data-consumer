@@ -6,6 +6,16 @@
 	"postCreateCommand": "pre-commit install --install-hooks",
 	"init": true,
 
+	"features": {
+        "ghcr.io/devcontainers/features/common-utils:2": {},
+        "ghcr.io/devcontainers/features/docker-in-docker:2": {
+            "version": "latest",
+            "moby": false,
+            "installDockerBuildx": true,
+            "dockerDashComposeVersion": "v2"
+        }
+    },
+
 	"customizations": {
 		"vscode": {
 			"extensions": [

@@ -1,0 +1,41 @@
+# Version control
+.git
+.gitignore
+
+# CI/CD & tooling
+.github/
+.pre-commit-config.yaml
+.air.toml
+.releaserc.json
+.sonarcloud.properties
+.devcontainer/
+
+# Node (semantic-release only)
+node_modules/
+package.json
+package-lock.json
+
+# Tests & coverage
+tests/
+coverage.out
+coverage/
+
+# Docs
+*.md
+
+# Environment & secrets
+.env
+.env.*
+certs/
+ignored/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Build artifacts
+tmp/
+notip-app

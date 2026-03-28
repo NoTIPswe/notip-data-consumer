@@ -23,7 +23,7 @@ const get = (flag) => {
 
 const inputPath = get('--input');
 const outputPath = get('--output');
-const service = get('--service') ?? 'management-api';
+const service = get('--service') ?? 'data-consumer';
 
 if (inputPath && outputPath) {
   run();
