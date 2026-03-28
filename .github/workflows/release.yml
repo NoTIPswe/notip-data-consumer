@@ -26,8 +26,6 @@ jobs:
     name: Semantic Release
     needs: quality-checks
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/notipswe/notip-go-dev:v0.0.1
     outputs:
       released: ${{ steps.semantic.outputs.released }}
       version: ${{ steps.semantic.outputs.version }}
