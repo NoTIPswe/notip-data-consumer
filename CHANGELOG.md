@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/NoTIPswe/notip-data-consumer/compare/v1.0.0...v1.0.1) (2026-03-30)
+
+
+### Bug Fixes
+
+* enhance NATSTelemetryConsumer message handling and testing ([39fc018](https://github.com/NoTIPswe/notip-data-consumer/commit/39fc018714e70f17f1fd7265a89e634e1d580898))
+
 # 1.0.0 (2026-03-28)
 
 

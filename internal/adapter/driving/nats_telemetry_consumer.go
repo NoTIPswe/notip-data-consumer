@@ -100,19 +100,7 @@ func (c *NATSTelemetryConsumer) Run(ctx context.Context) error {
 		func(msg *nats.Msg) {
 			c.metrics.IncMessagesReceived()
 			row, err := c.processMessage(ctx, msg)
-			select {
-			case pending <- pendingMsg{msg: msg, row: row, err: err}:
-
-			case <-ctx.Done():
-				if err != nil {
-					var pErr permanentError
-					if errors.As(err, &pErr) {
-						_ = msg.Term()
-						return
-					}
-				}
-				_ = msg.NakWithDelay(5 * time.Second)
-			}
+			c.enqueuePending(ctx, pending, pendingMsg{msg: msg, row: row, err: err})
 		},
 		nats.Durable(c.durableName),
 		nats.ManualAck(),
@@ -124,6 +112,24 @@ func (c *NATSTelemetryConsumer) Run(ctx context.Context) error {
 
 	c.flushLoop(ctx, pending)
 	return nil
+}
+
+// If ctx is done before the message can be queued, it requests redelivery for
+// transient failures and Term()s permanent parse failures.
+func (c *NATSTelemetryConsumer) enqueuePending(ctx context.Context, pending chan<- pendingMsg, pm pendingMsg) {
+	select {
+	case pending <- pm:
+		return
+	case <-ctx.Done():
+		if pm.err != nil {
+			var pErr permanentError
+			if errors.As(pm.err, &pErr) {
+				_ = pm.msg.Term()
+				return
+			}
+		}
+		_ = pm.msg.NakWithDelay(5 * time.Second)
+	}
 }
 
 // flushLoop drains the pending channel and writes batches to TimescaleDB.
@@ -143,14 +149,14 @@ func (c *NATSTelemetryConsumer) flushLoop(ctx context.Context, pending <-chan pe
 
 	for {
 		select {
-		case <-ctx.Done():
-			flush()
-			return
 		case pm := <-pending:
 			buf = append(buf, pm)
 			if len(buf) >= c.batchSize {
 				flush()
 			}
+		case <-ctx.Done():
+			flush()
+			return
 		case <-ticker.C:
 			flush()
 		}

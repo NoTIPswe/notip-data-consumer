@@ -199,6 +199,61 @@ func TestNATSTelemetryConsumerRunSubscribesAndStopsOnCancel(t *testing.T) {
 	assert.Equal(t, "t1", handler.lastTenantID)
 }
 
+func TestEnqueuePendingCanceledContextNaksTransientError(t *testing.T) {
+	c, _ := newConsumer(&stubTelemetryHandler{}, &stubTelemetryWriter{})
+	pending := make(chan pendingMsg)
+	msg := &stubMsg{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	pm := pendingMsg{msg: msg, row: model.TelemetryRow{}, err: errors.New("transient")}
+
+	done := make(chan struct{})
+	go func() {
+		c.enqueuePending(ctx, pending, pm)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("enqueuePending blocked after context cancellation")
+	}
+
+	assert.True(t, msg.nacked, "transient failure must be NAKed on canceled context")
+	assert.Equal(t, 5*time.Second, msg.nakDelay)
+	assert.False(t, msg.termed)
+	assert.False(t, msg.acked)
+}
+
+func TestEnqueuePendingCanceledContextTermsPermanentError(t *testing.T) {
+	c, _ := newConsumer(&stubTelemetryHandler{}, &stubTelemetryWriter{})
+	pending := make(chan pendingMsg)
+	msg := &stubMsg{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	pm := pendingMsg{msg: msg, err: permanentError{cause: errors.New("bad json")}}
+
+	done := make(chan struct{})
+	go func() {
+		c.enqueuePending(ctx, pending, pm)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("enqueuePending blocked after context cancellation")
+	}
+
+	assert.True(t, msg.termed, "permanent failure must be Termed on canceled context")
+	assert.False(t, msg.nacked)
+	assert.False(t, msg.acked)
+}
+
 // ─── flushLoop ────────────────────────────────────────────────────────────────
 
 func TestFlushLoopFlushesOnBatchSizeThreshold(t *testing.T) {
