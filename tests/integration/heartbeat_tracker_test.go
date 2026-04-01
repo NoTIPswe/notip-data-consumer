@@ -20,6 +20,11 @@ import (
 	"github.com/NoTIPswe/notip-data-consumer/internal/service"
 )
 
+// noopLifecycleMetrics satisfies lifecycleQueryErrRecorder without recording.
+type noopLifecycleMetrics struct{}
+
+func (*noopLifecycleMetrics) IncLifecycleQueryErrors() { /* no-op: metrics not under test */ }
+
 // controllableClock lets us advance time deterministically for the heartbeat tracker.
 type controllableClock struct {
 	mu  sync.Mutex
@@ -311,4 +316,88 @@ func TestHeartbeatTrackerIntegrationDecommissionRemovesGateway(t *testing.T) {
 
 	_, err = alertSub.NextMsg(500 * time.Millisecond)
 	assert.ErrorIs(t, err, nats.ErrTimeout, "decommissioned gateway should not trigger alert")
+}
+
+// TestHeartbeatTrackerIntegrationPausedLifecycleSuppressesAlert verifies that when
+// the Management API reports a gateway as paused, Tick() does not publish an offline
+// alert even after the heartbeat timeout has expired.
+//
+// Uses a real NATSRRClient + NATSGatewayLifecycleProvider wired to a mock NATS
+// responder, so the full lifecycle-gate path (RR → provider → Tick gate) is exercised.
+func TestHeartbeatTrackerIntegrationPausedLifecycleSuppressesAlert(t *testing.T) {
+	purgeStream(t, streamAlerts)
+
+	const gwID = "gw-paused-test"
+	const tenantID = "tenant-paused"
+
+	nc := connectNATSWithMTLS(t)
+	js, err := nc.JetStream()
+	require.NoError(t, err)
+
+	// Subscribe to alert subject with DeliverNew so stale messages are ignored.
+	alertSub, err := js.SubscribeSync(
+		fmt.Sprintf("alert.gw_offline.%s", tenantID),
+		nats.Durable(fmt.Sprintf("paused-alert-sub-%d", time.Now().UnixNano())),
+		nats.DeliverNew(),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = alertSub.Unsubscribe() })
+
+	// Mock Management API responder: always reports this gateway as paused.
+	lifecycleSub, err := nc.Subscribe("internal.mgmt.gateway.get-status", func(msg *nats.Msg) {
+		resp := model.GatewayLifecycleResponse{GatewayID: gwID, State: model.LifecyclePaused}
+		data, _ := json.Marshal(resp)
+		_ = msg.Respond(data)
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = lifecycleSub.Unsubscribe() })
+
+	// Wire real RR client + lifecycle provider.
+	rrClient := driven.NewNATSRRClient(nc, 5*time.Second)
+	lifecycleProvider := driven.NewNATSGatewayLifecycleProvider(rrClient, &noopLifecycleMetrics{})
+
+	alertPublisher := driven.NewNATSAlertPublisher(js, &noopAlertPublisherMetrics{})
+	statusUpdater := &recordingStatusUpdater{}
+	clock := newControllableClock(time.Now().UTC())
+
+	tracker := service.NewHeartbeatTracker(
+		clock,
+		alertPublisher,
+		statusUpdater,
+		&fixedAlertConfigProvider{timeoutMs: 500},
+		lifecycleProvider,
+		&noopTrackerMetrics{},
+		service.HeartbeatTrackerConfig{StatusUpdateBufSize: 100},
+	)
+	defer tracker.Close()
+
+	ctx := context.Background()
+
+	// Register the gateway via telemetry.
+	require.NoError(t, tracker.HandleTelemetry(ctx, tenantID, model.TelemetryEnvelope{
+		GatewayID:     gwID,
+		SensorID:      "s1",
+		SensorType:    "temp",
+		Timestamp:     clock.Now(),
+		KeyVersion:    1,
+		EncryptedData: model.OpaqueBlob{Value: "ZQ=="},
+		IV:            model.OpaqueBlob{Value: "aQ=="},
+		AuthTag:       model.OpaqueBlob{Value: "dA=="},
+	}))
+
+	// Advance clock past timeout and tick — lifecycle gate should suppress the alert.
+	clock.Advance(600 * time.Millisecond)
+	tracker.Tick(ctx)
+
+	// No offline alert must appear on the ALERTS stream.
+	_, err = alertSub.NextMsg(500 * time.Millisecond)
+	assert.ErrorIs(t, err, nats.ErrTimeout,
+		"paused gateway must not trigger an offline alert")
+
+	// No Offline status update must have been dispatched either.
+	time.Sleep(200 * time.Millisecond) // let dispatchWorker drain
+	for _, u := range statusUpdater.getUpdates() {
+		assert.NotEqual(t, model.Offline, u.Status,
+			"paused gateway must not produce an Offline status update")
+	}
 }

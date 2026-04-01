@@ -110,7 +110,9 @@ func TestNATSDecommissionConsumerIntegrationMultipleEvents(t *testing.T) {
 }
 
 // TestNATSDecommissionConsumerIntegrationMalformedSubjectIsTermed publishes
-// an event with an invalid subject (too many tokens) and verifies it is Term()d.
+// an event with an invalid subject (too many tokens) and verifies it is Term()d —
+// meaning NATS drops it permanently (NumPending and NumAckPending both reach 0)
+// and the handler is never called.
 func TestNATSDecommissionConsumerIntegrationMalformedSubjectIsTermed(t *testing.T) {
 	purgeStream(t, streamDecommission)
 
@@ -127,16 +129,19 @@ func TestNATSDecommissionConsumerIntegrationMalformedSubjectIsTermed(t *testing.
 
 	// The decommission consumer expects exactly 4 subject tokens.
 	// "gateway.decommissioned.>" matches this, but the consumer's extractIDs
-	// rejects subjects with != 4 parts. However, we can only publish to subjects
-	// captured by the stream (gateway.decommissioned.>), so a 5-token subject
-	// will be accepted by the stream but rejected by extractIDs.
+	// rejects subjects with != 4 parts. A 5-token subject is accepted by the
+	// stream but Term()d by the consumer.
 	_, err = js.Publish("gateway.decommissioned.tenant.gw.extra", []byte("{}"))
 	require.NoError(t, err)
 
-	// Give the consumer time to process the malformed message.
-	time.Sleep(1 * time.Second)
+	// A Term()d message is gone: NumPending and NumAckPending both drop to 0.
+	const durableDecommission = "data-consumer-decommission-listener"
+	require.Eventually(t, func() bool {
+		info, err := sharedJS.ConsumerInfo(streamDecommission, durableDecommission)
+		return err == nil && info.NumPending == 0 && info.NumAckPending == 0
+	}, 10*time.Second, 100*time.Millisecond, "message was not Term()d")
 
-	// Handler should not have been called for the malformed subject.
+	// Handler must never have been called.
 	assert.Empty(t, handler.getEvents(), "malformed subject should not trigger handler")
 }
 

@@ -3,6 +3,7 @@ package driving
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -59,6 +60,18 @@ type NATSTelemetryConsumer struct {
 }
 
 func NewNATSTelemetryConsumer(
+	js nats.JetStreamContext,
+	handler port.TelemetryMessageHandler,
+	writer port.TelemetryWriter,
+	metrics telemetryConsumerMetrics,
+	durableName string,
+	batchSize int,
+	flushEvery time.Duration,
+) *NATSTelemetryConsumer {
+	return newNATSTelemetryConsumer(&jsAdapter{js: js}, handler, writer, metrics, durableName, batchSize, flushEvery)
+}
+
+func newNATSTelemetryConsumer(
 	js natsJSSubscriber,
 	handler port.TelemetryMessageHandler,
 	writer port.TelemetryWriter,
@@ -87,7 +100,19 @@ func (c *NATSTelemetryConsumer) Run(ctx context.Context) error {
 		func(msg *nats.Msg) {
 			c.metrics.IncMessagesReceived()
 			row, err := c.processMessage(ctx, msg)
-			pending <- pendingMsg{msg: msg, row: row, err: err}
+			select {
+			case pending <- pendingMsg{msg: msg, row: row, err: err}:
+
+			case <-ctx.Done():
+				if err != nil {
+					var pErr permanentError
+					if errors.As(err, &pErr) {
+						_ = msg.Term()
+						return
+					}
+				}
+				_ = msg.NakWithDelay(5 * time.Second)
+			}
 		},
 		nats.Durable(c.durableName),
 		nats.ManualAck(),
@@ -95,7 +120,7 @@ func (c *NATSTelemetryConsumer) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("subscribe %s: %w", subjectTelemetry, err)
 	}
-	defer func() { _ = sub.Unsubscribe() }()
+	defer func() { _ = sub.Drain() }()
 
 	c.flushLoop(ctx, pending)
 	return nil

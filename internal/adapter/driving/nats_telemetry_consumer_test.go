@@ -61,7 +61,7 @@ type stubTelemetrySubscriber struct {
 	onSub   func(cb nats.MsgHandler)
 }
 
-func (s *stubTelemetrySubscriber) Subscribe(subj string, cb nats.MsgHandler, _ ...nats.SubOpt) (*nats.Subscription, error) {
+func (s *stubTelemetrySubscriber) Subscribe(subj string, cb nats.MsgHandler, _ ...nats.SubOpt) (drainableSubscription, error) {
 	s.subject = subj
 	if s.err != nil {
 		return nil, s.err
@@ -69,7 +69,7 @@ func (s *stubTelemetrySubscriber) Subscribe(subj string, cb nats.MsgHandler, _ .
 	if s.onSub != nil {
 		s.onSub(cb)
 	}
-	return &nats.Subscription{}, nil
+	return &fakeSubscription{}, nil
 }
 
 // stubMsg records which ACK operation was called — satisfies msgAcknowledger.
@@ -95,7 +95,7 @@ const testDurableName = "test-durable"
 
 func newConsumer(handler *stubTelemetryHandler, writer *stubTelemetryWriter) (*NATSTelemetryConsumer, *stubTelemetryMetrics) {
 	m := &stubTelemetryMetrics{}
-	c := NewNATSTelemetryConsumer(nil, handler, writer, m, testDurableName, 10, time.Second)
+	c := newNATSTelemetryConsumer(nil, handler, writer, m, testDurableName, 10, time.Second)
 	return c, m
 }
 
@@ -138,7 +138,7 @@ func TestNATSTelemetryConsumerRunReturnsSubscribeError(t *testing.T) {
 	writer := &stubTelemetryWriter{}
 	metrics := &stubTelemetryMetrics{}
 
-	consumer := NewNATSTelemetryConsumer(
+	consumer := newNATSTelemetryConsumer(
 		&stubTelemetrySubscriber{err: errors.New("nats unavailable")},
 		handler,
 		writer,
@@ -164,7 +164,7 @@ func TestNATSTelemetryConsumerRunSubscribesAndStopsOnCancel(t *testing.T) {
 		},
 	}
 
-	consumer := NewNATSTelemetryConsumer(
+	consumer := newNATSTelemetryConsumer(
 		sub,
 		handler,
 		writer,

@@ -14,6 +14,12 @@ import (
 	"github.com/NoTIPswe/notip-data-consumer/internal/domain/model"
 )
 
+const (
+	notJsonErrMsg      = "not json"
+	noRespondersErrMsg = "no responders"
+	tenantID           = "tenant-1"
+)
+
 // mockRequester records every call to RequestWithContext.
 type mockRequester struct {
 	subject string
@@ -87,7 +93,7 @@ func TestNATSRRClientFetchAlertConfigsNATSError(t *testing.T) {
 }
 
 func TestNATSRRClientFetchAlertConfigsMalformedJSON(t *testing.T) {
-	mock := &mockRequester{resp: &nats.Msg{Data: []byte("not json")}}
+	mock := &mockRequester{resp: &nats.Msg{Data: []byte(notJsonErrMsg)}}
 	client := newRRClient(mock)
 
 	_, err := client.FetchAlertConfigs(context.Background())
@@ -121,7 +127,7 @@ func TestNATSRRClientUpdateGatewayStatusSuccess(t *testing.T) {
 }
 
 func TestNATSRRClientUpdateGatewayStatusNATSError(t *testing.T) {
-	mock := &mockRequester{err: errors.New("no responders")}
+	mock := &mockRequester{err: errors.New(noRespondersErrMsg)}
 	client := newRRClient(mock)
 
 	err := client.UpdateGatewayStatus(context.Background(), model.GatewayStatusUpdate{})
@@ -142,7 +148,7 @@ func TestNATSRRClientUpdateGatewayStatusRejectedByManagementAPI(t *testing.T) {
 }
 
 func TestNATSRRClientUpdateGatewayStatusMalformedResponseJSON(t *testing.T) {
-	mock := &mockRequester{resp: &nats.Msg{Data: []byte("not json")}}
+	mock := &mockRequester{resp: &nats.Msg{Data: []byte(notJsonErrMsg)}}
 	client := newRRClient(mock)
 
 	err := client.UpdateGatewayStatus(context.Background(), model.GatewayStatusUpdate{GatewayID: "gw-1", Status: model.Offline})
@@ -160,7 +166,7 @@ func TestNATSRRClientGetGatewayLifecycleSuccess(t *testing.T) {
 	mock := &mockRequester{resp: &nats.Msg{Data: body}}
 	client := newRRClient(mock)
 
-	state, err := client.GetGatewayLifecycle(context.Background(), "tenant-1", "gw-1")
+	state, err := client.GetGatewayLifecycle(context.Background(), tenantID, "gw-1")
 
 	require.NoError(t, err)
 	assert.Equal(t, model.LifecyclePaused, state)
@@ -173,10 +179,10 @@ func TestNATSRRClientGetGatewayLifecycleSuccess(t *testing.T) {
 }
 
 func TestNATSRRClientGetGatewayLifecycleNATSError(t *testing.T) {
-	mock := &mockRequester{err: errors.New("no responders")}
+	mock := &mockRequester{err: errors.New(noRespondersErrMsg)}
 	client := newRRClient(mock)
 
-	state, err := client.GetGatewayLifecycle(context.Background(), "tenant-1", "gw-1")
+	state, err := client.GetGatewayLifecycle(context.Background(), tenantID, "gw-1")
 
 	require.Error(t, err)
 	assert.Equal(t, model.LifecycleUnknown, state)
@@ -184,10 +190,10 @@ func TestNATSRRClientGetGatewayLifecycleNATSError(t *testing.T) {
 }
 
 func TestNATSRRClientGetGatewayLifecycleMalformedJSON(t *testing.T) {
-	mock := &mockRequester{resp: &nats.Msg{Data: []byte("not json")}}
+	mock := &mockRequester{resp: &nats.Msg{Data: []byte(notJsonErrMsg)}}
 	client := newRRClient(mock)
 
-	state, err := client.GetGatewayLifecycle(context.Background(), "tenant-1", "gw-1")
+	state, err := client.GetGatewayLifecycle(context.Background(), tenantID, "gw-1")
 
 	require.Error(t, err)
 	assert.Equal(t, model.LifecycleUnknown, state)
@@ -209,7 +215,7 @@ func TestNATSRRClientFetchAlertConfigsRetriesThenSucceeds(t *testing.T) {
 }
 
 func TestNATSRRClientFetchAlertConfigsExhaustsRetries(t *testing.T) {
-	mock := &mockRequester{err: errors.New("no responders")}
+	mock := &mockRequester{err: errors.New(noRespondersErrMsg)}
 	client := newRRClient(mock)
 
 	_, err := client.FetchAlertConfigs(context.Background())
