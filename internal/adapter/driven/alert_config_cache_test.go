@@ -223,3 +223,16 @@ func TestAlertConfigCacheFetchWithBackoffSucceedsOnFirstAttempt(t *testing.T) {
 		"a successful fetch must populate the snapshot")
 	assert.Equal(t, 0, m.refreshErrors, "no error counter incremented on success")
 }
+
+func TestAlertConfigCacheFetchWithBackoffExhaustedRetries(t *testing.T) {
+	fetcher := &stubFetcher{err: errors.New("permanent error")}
+	m := &stubCacheMetrics{}
+	cache := NewAlertConfigCache(fetcher, m, 60000, time.Hour, 1)
+
+	err := cache.fetchWithBackoff(context.Background())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exhausted 1 retries")
+	assert.Equal(t, 1, fetcher.calls)
+	assert.Equal(t, 1, m.refreshErrors)
+}

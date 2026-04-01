@@ -130,6 +130,70 @@ func TestNATSRRClientUpdateGatewayStatusNATSError(t *testing.T) {
 	assert.Contains(t, err.Error(), subjectGatewayUpdateStatus)
 }
 
+func TestNATSRRClientUpdateGatewayStatusRejectedByManagementAPI(t *testing.T) {
+	mock := &mockRequester{resp: &nats.Msg{Data: []byte(`{"success":false,"error":"invalid transition"}`)}}
+	client := newRRClient(mock)
+
+	err := client.UpdateGatewayStatus(context.Background(), model.GatewayStatusUpdate{GatewayID: "gw-1", Status: model.Offline})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "rejected by management-api")
+	assert.Contains(t, err.Error(), "invalid transition")
+}
+
+func TestNATSRRClientUpdateGatewayStatusMalformedResponseJSON(t *testing.T) {
+	mock := &mockRequester{resp: &nats.Msg{Data: []byte("not json")}}
+	client := newRRClient(mock)
+
+	err := client.UpdateGatewayStatus(context.Background(), model.GatewayStatusUpdate{GatewayID: "gw-1", Status: model.Offline})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unmarshal gateway status update response")
+}
+
+// ─── GetGatewayLifecycle ──────────────────────────────────────────────────────
+
+func TestNATSRRClientGetGatewayLifecycleSuccess(t *testing.T) {
+	resp := model.GatewayLifecycleResponse{GatewayID: "gw-1", State: model.LifecyclePaused}
+	body, _ := json.Marshal(resp)
+
+	mock := &mockRequester{resp: &nats.Msg{Data: body}}
+	client := newRRClient(mock)
+
+	state, err := client.GetGatewayLifecycle(context.Background(), "tenant-1", "gw-1")
+
+	require.NoError(t, err)
+	assert.Equal(t, model.LifecyclePaused, state)
+	assert.Equal(t, subjectGatewayGetStatus, mock.subject)
+
+	var decoded model.GatewayLifecycleRequest
+	require.NoError(t, json.Unmarshal(mock.payload, &decoded))
+	assert.Equal(t, "gw-1", decoded.GatewayID)
+	assert.Equal(t, "tenant-1", decoded.TenantID)
+}
+
+func TestNATSRRClientGetGatewayLifecycleNATSError(t *testing.T) {
+	mock := &mockRequester{err: errors.New("no responders")}
+	client := newRRClient(mock)
+
+	state, err := client.GetGatewayLifecycle(context.Background(), "tenant-1", "gw-1")
+
+	require.Error(t, err)
+	assert.Equal(t, model.LifecycleUnknown, state)
+	assert.Contains(t, err.Error(), subjectGatewayGetStatus)
+}
+
+func TestNATSRRClientGetGatewayLifecycleMalformedJSON(t *testing.T) {
+	mock := &mockRequester{resp: &nats.Msg{Data: []byte("not json")}}
+	client := newRRClient(mock)
+
+	state, err := client.GetGatewayLifecycle(context.Background(), "tenant-1", "gw-1")
+
+	require.Error(t, err)
+	assert.Equal(t, model.LifecycleUnknown, state)
+	assert.Contains(t, err.Error(), "unmarshal")
+}
+
 func TestNATSRRClientFetchAlertConfigsRetriesThenSucceeds(t *testing.T) {
 	mock := &mockRequester{
 		errs: []error{errors.New("timeout 1"), errors.New("timeout 2"), nil},

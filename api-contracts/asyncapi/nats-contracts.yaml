@@ -333,6 +333,27 @@ channels:
               type: string
               description: Error detail, present only on failure.
 
+  internal.mgmt.gateway.get-status:
+    description: |
+      Data Consumer queries Management API for the current lifecycle state of a gateway.
+      Called only when a heartbeat timeout is detected, before publishing an offline alert.
+      If state is paused, the alert and offline status update are suppressed.
+      Requester: data-consumer. Responder: management-api.
+    publish:
+      operationId: getGatewayLifecycle
+      summary: Data Consumer requests the current lifecycle state of a gateway.
+      tags:
+        - name: data-consumer
+      message:
+        $ref: "#/components/messages/GatewayLifecycleRequest"
+    subscribe:
+      operationId: respondGatewayLifecycle
+      summary: Management API returns the current lifecycle state.
+      tags:
+        - name: management-api
+      message:
+        $ref: "#/components/messages/GatewayLifecycleResponse"
+
   internal.cost:
     description: |
       Management API queries Data API for tenant storage usage.
@@ -624,6 +645,42 @@ components:
           last_seen_at:
             type: string
             format: date-time
+
+    GatewayLifecycleRequest:
+      name: GatewayLifecycleRequest
+      contentType: application/json
+      payload:
+        title: GatewayLifecycleRequest
+        type: object
+        required: [gateway_id, tenant_id]
+        properties:
+          gateway_id:
+            type: string
+            format: uuid
+          tenant_id:
+            type: string
+            format: uuid
+
+    GatewayLifecycleResponse:
+      name: GatewayLifecycleResponse
+      contentType: application/json
+      payload:
+        title: GatewayLifecycleResponse
+        type: object
+        required: [gateway_id, state]
+        properties:
+          gateway_id:
+            type: string
+            format: uuid
+          state:
+            title: GatewayLifecycleState
+            type: string
+            enum: [online, offline, paused, provisioning]
+            description: |
+              Current configured lifecycle state of the gateway.
+              online/offline: gateway is actively managed.
+              paused: gateway has been intentionally suspended — suppress offline alerts.
+              provisioning: gateway is being provisioned — not yet active.
 
     CostRequest:
       name: CostRequest

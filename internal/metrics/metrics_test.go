@@ -101,6 +101,12 @@ func TestMetricsIncNATSReconnects(t *testing.T) {
 	assert.NotPanics(t, func() { m.IncNATSReconnects() })
 }
 
+func TestMetricsIncLifecycleQueryErrors(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := metrics.New(reg)
+	assert.NotPanics(t, func() { m.IncLifecycleQueryErrors() })
+}
+
 // ─── Gauge and Histogram ──────────────────────────────────────────────────────
 
 func TestMetricsSetHeartbeatMapSize(t *testing.T) {
@@ -146,6 +152,9 @@ func TestMetricsSatisfiesNarrowInterfaces(t *testing.T) {
 	type natsReconnectRecorder interface {
 		IncNATSReconnects()
 	}
+	type lifecycleQueryErrRecorder interface {
+		IncLifecycleQueryErrors()
+	}
 
 	var _ telemetryConsumerMetrics = m
 	var _ alertPublisherMetrics = m
@@ -153,4 +162,5 @@ func TestMetricsSatisfiesNarrowInterfaces(t *testing.T) {
 	var _ cacheErrRecorder = m
 	var _ heartbeatTrackerMetrics = m
 	var _ natsReconnectRecorder = m
+	var _ lifecycleQueryErrRecorder = m
 }

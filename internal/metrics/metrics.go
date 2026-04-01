@@ -20,6 +20,7 @@ type Metrics struct {
 	AlertCacheRefreshErrors prometheus.Counter
 	NATSReconnects          prometheus.Counter
 	HeartbeatMapSize        prometheus.Gauge
+	LifecycleQueryErrors    prometheus.Counter
 }
 
 // New registers all metrics with the provided registry and returns the handles.
@@ -72,6 +73,10 @@ func New(reg prometheus.Registerer) *Metrics {
 			Name: "notip_consumer_heartbeat_map_size",
 			Help: "Number of gateways currently tracked in the heartbeat map.",
 		}),
+		LifecycleQueryErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "notip_consumer_lifecycle_query_errors_total",
+			Help: "Total failed NATS RR gateway lifecycle query calls (per Tick candidate).",
+		}),
 	}
 
 	reg.MustRegister(
@@ -86,6 +91,7 @@ func New(reg prometheus.Registerer) *Metrics {
 		m.AlertCacheRefreshErrors,
 		m.NATSReconnects,
 		m.HeartbeatMapSize,
+		m.LifecycleQueryErrors,
 	)
 
 	return m
@@ -105,3 +111,4 @@ func (m *Metrics) IncStatusUpdateDropped()             { m.StatusUpdateDropped.I
 func (m *Metrics) IncAlertCacheRefreshErrors()         { m.AlertCacheRefreshErrors.Inc() }
 func (m *Metrics) IncNATSReconnects()                  { m.NATSReconnects.Inc() }
 func (m *Metrics) SetHeartbeatMapSize(v float64)       { m.HeartbeatMapSize.Set(v) }
+func (m *Metrics) IncLifecycleQueryErrors()            { m.LifecycleQueryErrors.Inc() }

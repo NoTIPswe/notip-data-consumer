@@ -100,6 +100,7 @@ func run() error {
 
 	alertPublisher := driven.NewNATSAlertPublisher(js, m)
 	statusUpdater := driven.NewNATSGatewayStatusUpdater(rrClient, m)
+	lifecycleProvider := driven.NewNATSGatewayLifecycleProvider(rrClient, m)
 	telemetryWriter := driven.NewPostgresTelemetryWriter(pool)
 	clock := &driven.SystemClock{}
 
@@ -109,9 +110,12 @@ func run() error {
 		alertPublisher,
 		statusUpdater,
 		alertCache,
+		lifecycleProvider,
 		m,
-		cfg.GatewayBufferSize,
-		time.Duration(cfg.HeartbeatGracePeriodMs)*time.Millisecond,
+		service.HeartbeatTrackerConfig{
+			StatusUpdateBufSize: cfg.GatewayBufferSize,
+			GracePeriod:         time.Duration(cfg.HeartbeatGracePeriodMs) * time.Millisecond,
+		},
 	)
 	defer tracker.Close() // drain dispatch channel before NATS drains (LIFO: runs before nc.Drain)
 

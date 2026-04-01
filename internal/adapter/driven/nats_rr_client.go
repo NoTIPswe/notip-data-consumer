@@ -15,6 +15,9 @@ import (
 const (
 	subjectAlertConfigsList    = "internal.mgmt.alert-configs.list"
 	subjectGatewayUpdateStatus = "internal.mgmt.gateway.update-status"
+	subjectGatewayGetStatus    = "internal.mgmt.gateway.get-status"
+
+	errFmtNATSRR = "nats rr %s: %w"
 )
 
 // natsRequester is a narrow interface over *nats.Conn to enable unit testing.
@@ -49,7 +52,7 @@ func NewNATSRRClient(nc *nats.Conn, timeout time.Duration) *NATSRRClient {
 func (c *NATSRRClient) FetchAlertConfigs(ctx context.Context) ([]model.AlertConfig, error) {
 	msg, err := c.requestWithRetry(ctx, subjectAlertConfigsList, nil)
 	if err != nil {
-		return nil, fmt.Errorf("nats rr %s: %w", subjectAlertConfigsList, err)
+		return nil, fmt.Errorf(errFmtNATSRR, subjectAlertConfigsList, err)
 	}
 
 	var configs []model.AlertConfig
@@ -70,7 +73,7 @@ func (c *NATSRRClient) UpdateGatewayStatus(ctx context.Context, update model.Gat
 
 	resp, err := c.requestWithRetry(ctx, subjectGatewayUpdateStatus, body)
 	if err != nil {
-		return fmt.Errorf("nats rr %s: %w", subjectGatewayUpdateStatus, err)
+		return fmt.Errorf(errFmtNATSRR, subjectGatewayUpdateStatus, err)
 	}
 
 	var result model.GatewayStatusUpdateResponse
@@ -82,6 +85,27 @@ func (c *NATSRRClient) UpdateGatewayStatus(ctx context.Context, update model.Gat
 	}
 
 	return nil
+}
+
+// GetGatewayLifecycle issues a NATS RR call to internal.mgmt.gateway.get-status
+// and returns the current administrative lifecycle state of the gateway.
+func (c *NATSRRClient) GetGatewayLifecycle(ctx context.Context, tenantID, gatewayID string) (model.GatewayLifecycleState, error) {
+	body, err := json.Marshal(model.GatewayLifecycleRequest{GatewayID: gatewayID, TenantID: tenantID})
+	if err != nil {
+		return model.LifecycleUnknown, fmt.Errorf("marshal gateway lifecycle request: %w", err)
+	}
+
+	resp, err := c.requestWithRetry(ctx, subjectGatewayGetStatus, body)
+	if err != nil {
+		return model.LifecycleUnknown, fmt.Errorf(errFmtNATSRR, subjectGatewayGetStatus, err)
+	}
+
+	var result model.GatewayLifecycleResponse
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return model.LifecycleUnknown, fmt.Errorf("unmarshal gateway lifecycle response: %w", err)
+	}
+
+	return result.State, nil
 }
 
 // requestWithRetry applies AsyncAPI RR policy: timeout 5s per attempt, retry 3x with
@@ -112,11 +136,4 @@ func (c *NATSRRClient) requestWithRetry(ctx context.Context, subject string, bod
 	}
 
 	return nil, fmt.Errorf("exhausted retries (%d): %s", c.maxRetries, strings.Join(errs, "; "))
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

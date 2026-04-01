@@ -57,6 +57,13 @@ type noopTrackerMetrics struct {
 func (m *noopTrackerMetrics) IncStatusUpdateDropped()       { /* no-op: metrics not under test */ }
 func (m *noopTrackerMetrics) SetHeartbeatMapSize(v float64) { m.mapSize.Store(int64(v)) }
 
+// noopLifecycleProvider always reports online — lifecycle gating is not under test here.
+type noopLifecycleProvider struct{}
+
+func (p *noopLifecycleProvider) GetGatewayLifecycle(_ context.Context, _, _ string) (model.GatewayLifecycleState, error) {
+	return model.LifecycleOnline, nil
+}
+
 // recordingStatusUpdater captures status updates dispatched by the tracker.
 type recordingStatusUpdater struct {
 	mu      sync.Mutex
@@ -116,9 +123,9 @@ func TestHeartbeatTrackerIntegrationFullLifecycle(t *testing.T) {
 		alertPublisher,
 		statusUpdater,
 		&fixedAlertConfigProvider{timeoutMs: 500}, // 500ms timeout for fast test
+		&noopLifecycleProvider{},
 		trackerMetrics,
-		100,
-		0, // zero grace period — alerts are active immediately
+		service.HeartbeatTrackerConfig{StatusUpdateBufSize: 100}, // zero GracePeriod — alerts active immediately
 	)
 	defer tracker.Close()
 
@@ -216,9 +223,9 @@ func TestHeartbeatTrackerIntegrationGracePeriodSuppressesAlerts(t *testing.T) {
 		alertPublisher,
 		statusUpdater,
 		&fixedAlertConfigProvider{timeoutMs: 100},
+		&noopLifecycleProvider{},
 		&noopTrackerMetrics{},
-		100,
-		5*time.Second, // grace period: alerts suppressed for 5s after startup
+		service.HeartbeatTrackerConfig{StatusUpdateBufSize: 100, GracePeriod: 5 * time.Second},
 	)
 	defer tracker.Close()
 
@@ -273,9 +280,9 @@ func TestHeartbeatTrackerIntegrationDecommissionRemovesGateway(t *testing.T) {
 		alertPublisher,
 		statusUpdater,
 		&fixedAlertConfigProvider{timeoutMs: 100},
+		&noopLifecycleProvider{},
 		trackerMetrics,
-		100,
-		0, // no grace period
+		service.HeartbeatTrackerConfig{StatusUpdateBufSize: 100}, // zero GracePeriod — no grace period
 	)
 	defer tracker.Close()
 
