@@ -11,6 +11,11 @@ import (
 	"github.com/NoTIPswe/notip-data-consumer/internal/domain/model"
 )
 
+const (
+	testTenantID  = "tenant-1"
+	testGatewayID = "gw-1"
+)
+
 type stubLifecycleClient struct {
 	state model.GatewayLifecycleState
 	err   error
@@ -37,7 +42,7 @@ func TestNATSGatewayLifecycleProviderSuccess(t *testing.T) {
 	stub := &stubLifecycleClient{state: model.LifecyclePaused}
 	p, m := newLifecycleProvider(stub)
 
-	state, err := p.GetGatewayLifecycle(context.Background(), "tenant-1", "gw-1")
+	state, err := p.GetGatewayLifecycle(context.Background(), testTenantID, testGatewayID)
 
 	require.NoError(t, err)
 	assert.Equal(t, model.LifecyclePaused, state)
@@ -48,7 +53,7 @@ func TestNATSGatewayLifecycleProviderOnlineState(t *testing.T) {
 	stub := &stubLifecycleClient{state: model.LifecycleOnline}
 	p, _ := newLifecycleProvider(stub)
 
-	state, err := p.GetGatewayLifecycle(context.Background(), "tenant-1", "gw-1")
+	state, err := p.GetGatewayLifecycle(context.Background(), testTenantID, testGatewayID)
 
 	require.NoError(t, err)
 	assert.Equal(t, model.LifecycleOnline, state)
@@ -58,7 +63,7 @@ func TestNATSGatewayLifecycleProviderNATSError(t *testing.T) {
 	stub := &stubLifecycleClient{err: errors.New("no responders")}
 	p, m := newLifecycleProvider(stub)
 
-	state, err := p.GetGatewayLifecycle(context.Background(), "tenant-1", "gw-1")
+	state, err := p.GetGatewayLifecycle(context.Background(), testTenantID, testGatewayID)
 
 	require.Error(t, err)
 	assert.Equal(t, model.LifecycleUnknown, state)

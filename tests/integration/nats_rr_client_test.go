@@ -16,6 +16,11 @@ import (
 	"github.com/NoTIPswe/notip-data-consumer/internal/domain/model"
 )
 
+const (
+	expectedTimeoutError = "expected timeout error when no responder is available"
+	testGatewayIDRR      = "gw-lc-test"
+)
+
 // TestNATSRRClientIntegrationFetchAlertConfigs sets up a mock responder on the
 // alert-configs subject and verifies that the RR client correctly deserialises
 // the response into []model.AlertConfig.
@@ -61,7 +66,7 @@ func TestNATSRRClientIntegrationFetchAlertConfigsTimeout(t *testing.T) {
 	client := driven.NewNATSRRClient(nc, 200*time.Millisecond)
 
 	_, err := client.FetchAlertConfigs(context.Background())
-	require.Error(t, err, "expected timeout error when no responder is available")
+	require.Error(t, err, expectedTimeoutError)
 }
 
 // TestNATSRRClientIntegrationUpdateGatewayStatus sets up a mock responder on
@@ -113,7 +118,7 @@ func TestNATSRRClientIntegrationUpdateGatewayStatusTimeout(t *testing.T) {
 		Status:     model.Offline,
 		LastSeenAt: time.Now(),
 	})
-	require.Error(t, err, "expected timeout error when no responder is available")
+	require.Error(t, err, expectedTimeoutError)
 }
 
 // TestNATSRRClientIntegrationGetGatewayLifecycle sets up a mock responder on the
@@ -129,20 +134,20 @@ func TestNATSRRClientIntegrationGetGatewayLifecycle(t *testing.T) {
 		if err := json.Unmarshal(msg.Data, &req); err == nil {
 			received <- req
 		}
-		resp := model.GatewayLifecycleResponse{GatewayID: "gw-lc-test", State: model.LifecyclePaused}
+		resp := model.GatewayLifecycleResponse{GatewayID: testGatewayIDRR, State: model.LifecyclePaused}
 		data, _ := json.Marshal(resp)
 		_ = msg.Respond(data)
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sub.Unsubscribe() })
 
-	state, err := client.GetGatewayLifecycle(context.Background(), "tenant-lc", "gw-lc-test")
+	state, err := client.GetGatewayLifecycle(context.Background(), "tenant-lc", testGatewayIDRR)
 	require.NoError(t, err)
 	assert.Equal(t, model.LifecyclePaused, state)
 
 	select {
 	case got := <-received:
-		assert.Equal(t, "gw-lc-test", got.GatewayID)
+		assert.Equal(t, testGatewayIDRR, got.GatewayID)
 		assert.Equal(t, "tenant-lc", got.TenantID)
 	case <-time.After(5 * time.Second):
 		t.Fatal("mock responder never received the lifecycle request")
@@ -156,5 +161,5 @@ func TestNATSRRClientIntegrationGetGatewayLifecycleTimeout(t *testing.T) {
 	client := driven.NewNATSRRClient(nc, 200*time.Millisecond)
 
 	_, err := client.GetGatewayLifecycle(context.Background(), "tenant-timeout", "gw-timeout")
-	require.Error(t, err, "expected timeout error when no responder is available")
+	require.Error(t, err, expectedTimeoutError)
 }

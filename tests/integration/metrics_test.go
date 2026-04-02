@@ -35,6 +35,8 @@ var allExpectedMetricNames = []string{
 	"notip_consumer_lifecycle_query_errors_total",
 }
 
+const endpoint = "/metrics"
+
 // TestPrometheusMetricsScrapeEndpointExposesAllMetrics verifies that the Prometheus
 // HTTP handler built from a real registry serves valid text-format output containing
 // every expected metric name. This catches regressions where a metric is registered
@@ -61,7 +63,7 @@ func TestPrometheusMetricsScrapeEndpointExposesAllMetrics(t *testing.T) {
 	srv := httptest.NewServer(promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	t.Cleanup(srv.Close)
 
-	resp, err := http.Get(srv.URL + "/metrics")
+	resp, err := http.Get(srv.URL + endpoint)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -93,7 +95,7 @@ func TestPrometheusMetricsScrapeEndpointReflectsIncrements(t *testing.T) {
 	srv := httptest.NewServer(promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	t.Cleanup(srv.Close)
 
-	resp, err := http.Get(srv.URL + "/metrics")
+	resp, err := http.Get(srv.URL + endpoint)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -119,7 +121,7 @@ func TestPrometheusMetricsScrapeEndpointGaugeReflectsSet(t *testing.T) {
 	srv := httptest.NewServer(promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	t.Cleanup(srv.Close)
 
-	resp, err := http.Get(srv.URL + "/metrics")
+	resp, err := http.Get(srv.URL + endpoint)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 

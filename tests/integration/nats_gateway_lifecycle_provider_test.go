@@ -16,6 +16,8 @@ import (
 	"github.com/NoTIPswe/notip-data-consumer/internal/domain/model"
 )
 
+const testGatewayIDLifecycle = "gw-prov-test"
+
 // recordingLifecycleMetrics counts lifecycle query errors for assertion.
 type recordingLifecycleMetrics struct {
 	errors int
@@ -37,14 +39,14 @@ func TestNATSGatewayLifecycleProviderIntegrationReturnsPausedState(t *testing.T)
 		if err := json.Unmarshal(msg.Data, &req); err == nil {
 			received <- req
 		}
-		resp := model.GatewayLifecycleResponse{GatewayID: "gw-prov-test", State: model.LifecyclePaused}
+		resp := model.GatewayLifecycleResponse{GatewayID: testGatewayIDLifecycle, State: model.LifecyclePaused}
 		data, _ := json.Marshal(resp)
 		_ = msg.Respond(data)
 	})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sub.Unsubscribe() })
 
-	state, err := provider.GetGatewayLifecycle(context.Background(), "tenant-prov", "gw-prov-test")
+	state, err := provider.GetGatewayLifecycle(context.Background(), "tenant-prov", testGatewayIDLifecycle)
 
 	require.NoError(t, err)
 	assert.Equal(t, model.LifecyclePaused, state)
@@ -52,7 +54,7 @@ func TestNATSGatewayLifecycleProviderIntegrationReturnsPausedState(t *testing.T)
 
 	select {
 	case got := <-received:
-		assert.Equal(t, "gw-prov-test", got.GatewayID)
+		assert.Equal(t, testGatewayIDLifecycle, got.GatewayID)
 		assert.Equal(t, "tenant-prov", got.TenantID)
 	case <-time.After(5 * time.Second):
 		t.Fatal("mock responder never received the lifecycle request")
