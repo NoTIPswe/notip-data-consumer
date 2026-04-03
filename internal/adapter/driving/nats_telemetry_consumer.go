@@ -26,9 +26,11 @@ func (e permanentError) Unwrap() error { return e.cause }
 // telemetryConsumerMetrics is the narrow metric interface for NATSTelemetryConsumer.
 type telemetryConsumerMetrics interface {
 	IncMessagesReceived()
+	IncMessageParsingErrors()
 	IncMessagesWritten()
 	IncWriteErrors()
 	ObserveWriteLatency(d time.Duration)
+	ObserveBatchSize(size float64)
 }
 
 // msgAcknowledger abstracts NATS message acknowledgement so writeBatch can be
@@ -173,6 +175,8 @@ func (c *NATSTelemetryConsumer) writeBatch(ctx context.Context, batch []pendingM
 		}
 	}
 
+	c.metrics.ObserveBatchSize(float64(len(rows)))
+
 	var writeErr error
 	if len(rows) > 0 {
 		start := time.Now()
@@ -182,7 +186,7 @@ func (c *NATSTelemetryConsumer) writeBatch(ctx context.Context, batch []pendingM
 
 	for _, pm := range batch {
 		if pm.err != nil {
-			// Permanent parse error term so NATS never redelivers.
+			c.metrics.IncMessageParsingErrors()
 			_ = pm.msg.Term()
 			continue
 		}

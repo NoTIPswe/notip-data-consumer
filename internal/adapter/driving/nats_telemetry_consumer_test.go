@@ -44,16 +44,22 @@ func (s *stubTelemetryWriter) WriteBatch(_ context.Context, rows []model.Telemet
 }
 
 type stubTelemetryMetrics struct {
-	received  int
-	written   int
-	errors    int
-	latencies int
+	received      int
+	parsingErrors int
+	written       int
+	errors        int
+	latencies     int
+	batchSizes    []float64
 }
 
 func (s *stubTelemetryMetrics) IncMessagesReceived()                { s.received++ }
+func (s *stubTelemetryMetrics) IncMessageParsingErrors()            { s.parsingErrors++ }
 func (s *stubTelemetryMetrics) IncMessagesWritten()                 { s.written++ }
 func (s *stubTelemetryMetrics) IncWriteErrors()                     { s.errors++ }
 func (s *stubTelemetryMetrics) ObserveWriteLatency(_ time.Duration) { s.latencies++ }
+func (s *stubTelemetryMetrics) ObserveBatchSize(size float64) {
+	s.batchSizes = append(s.batchSizes, size)
+}
 
 type stubTelemetrySubscriber struct {
 	subject string

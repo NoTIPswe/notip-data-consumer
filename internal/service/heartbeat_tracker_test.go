@@ -43,6 +43,7 @@ type mockMetrics struct {
 	mu                  sync.Mutex
 	statusUpdateDropped int
 	heartbeatMapSize    float64
+	dispatchQueueLength float64
 }
 
 func (m *mockMetrics) IncStatusUpdateDropped() {
@@ -55,6 +56,12 @@ func (m *mockMetrics) SetHeartbeatMapSize(v float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.heartbeatMapSize = v
+}
+
+func (m *mockMetrics) SetDispatchQueueLength(v float64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dispatchQueueLength = v
 }
 
 func (m *mockMetrics) dropped() int {

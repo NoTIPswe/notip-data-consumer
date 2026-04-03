@@ -122,6 +122,7 @@ func run() error {
 	// ── Build driving adapters ──────────────────────────────────────────────────
 	tickTimer := driving.NewHeartbeatTickTimer(
 		tracker,
+		m,
 		time.Duration(cfg.HeartbeatTickMs)*time.Millisecond,
 	)
 	decommConsumer := driving.NewNATSDecommissionConsumer(js, tracker)

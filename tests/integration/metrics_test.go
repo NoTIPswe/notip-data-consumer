@@ -22,16 +22,21 @@ import (
 // must expose. Any addition to metrics.go must also be added here to stay in sync.
 var allExpectedMetricNames = []string{
 	"notip_consumer_messages_received_total",
+	"notip_consumer_message_parsing_errors_total",
 	"notip_consumer_messages_written_total",
 	"notip_consumer_write_errors_total",
 	"notip_consumer_write_duration_seconds",
+	"notip_consumer_batch_size",
 	"notip_consumer_alerts_published_total",
 	"notip_consumer_alert_publish_errors_total",
+	"notip_consumer_heartbeat_map_size",
+	"notip_consumer_heartbeat_tick_duration_seconds",
 	"notip_consumer_status_update_errors_total",
 	"notip_consumer_status_update_dropped_total",
+	"notip_consumer_dispatch_queue_length",
 	"notip_consumer_alert_cache_refresh_errors_total",
+	"notip_consumer_alert_cache_last_success_timestamp",
 	"notip_consumer_nats_reconnects_total",
-	"notip_consumer_heartbeat_map_size",
 	"notip_consumer_lifecycle_query_errors_total",
 }
 
@@ -48,16 +53,21 @@ func TestPrometheusMetricsScrapeEndpointExposesAllMetrics(t *testing.T) {
 	// Exercise every method once so all series appear in the output (Prometheus
 	// only outputs series that have been observed at least once for counters/gauges).
 	m.IncMessagesReceived()
+	m.IncMessageParsingErrors()
 	m.IncMessagesWritten()
 	m.IncWriteErrors()
 	m.ObserveWriteLatency(10 * time.Millisecond)
+	m.ObserveBatchSize(50)
 	m.IncAlertsPublished()
 	m.IncAlertPublishErrors()
+	m.SetHeartbeatMapSize(3)
+	m.ObserveHeartbeatTickDuration(5 * time.Millisecond)
 	m.IncStatusUpdateErrors()
 	m.IncStatusUpdateDropped()
+	m.SetDispatchQueueLength(2)
 	m.IncAlertCacheRefreshErrors()
+	m.SetAlertCacheLastSuccess(1711305600)
 	m.IncNATSReconnects()
-	m.SetHeartbeatMapSize(3)
 	m.IncLifecycleQueryErrors()
 
 	srv := httptest.NewServer(promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))

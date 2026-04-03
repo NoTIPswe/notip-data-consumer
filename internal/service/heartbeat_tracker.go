@@ -15,6 +15,7 @@ import (
 type HeartbeatTrackerMetrics interface {
 	IncStatusUpdateDropped()
 	SetHeartbeatMapSize(v float64)
+	SetDispatchQueueLength(v float64)
 }
 
 // gatewayKey is the composite map key.
@@ -108,6 +109,7 @@ func (t *HeartbeatTracker) Close() {
 func (t *HeartbeatTracker) dispatchWorker() {
 	defer close(t.done)
 	for job := range t.dispatchCh {
+		t.metrics.SetDispatchQueueLength(float64(len(t.dispatchCh)))
 		_ = t.statusUpdater.UpdateStatus(context.Background(), job.update)
 	}
 }

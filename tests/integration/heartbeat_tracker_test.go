@@ -59,8 +59,9 @@ type noopTrackerMetrics struct {
 	mapSize atomic.Int64
 }
 
-func (m *noopTrackerMetrics) IncStatusUpdateDropped()       { /* no-op: metrics not under test */ }
-func (m *noopTrackerMetrics) SetHeartbeatMapSize(v float64) { m.mapSize.Store(int64(v)) }
+func (m *noopTrackerMetrics) IncStatusUpdateDropped()          { /* no-op */ }
+func (m *noopTrackerMetrics) SetHeartbeatMapSize(v float64)    { m.mapSize.Store(int64(v)) }
+func (m *noopTrackerMetrics) SetDispatchQueueLength(_ float64) { /* no-op */ }
 
 // noopLifecycleProvider always reports online — lifecycle gating is not under test here.
 type noopLifecycleProvider struct{}

@@ -29,16 +29,21 @@ const (
 // (alertPublisher, alertCache, heartbeatTracker, statusUpdater, telemetryConsumer).
 type noopE2EMetrics struct{}
 
-func (*noopE2EMetrics) IncAlertsPublished()                 { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) IncAlertPublishErrors()              { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) IncAlertCacheRefreshErrors()         { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) IncStatusUpdateDropped()             { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) SetHeartbeatMapSize(_ float64)       { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) IncStatusUpdateErrors()              { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) IncMessagesReceived()                { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) IncMessagesWritten()                 { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) IncWriteErrors()                     { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) ObserveWriteLatency(_ time.Duration) { /* no-op: metrics not under test */ }
+func (*noopE2EMetrics) IncAlertsPublished()                          { /* no-op */ }
+func (*noopE2EMetrics) IncAlertPublishErrors()                       { /* no-op */ }
+func (*noopE2EMetrics) IncAlertCacheRefreshErrors()                  { /* no-op */ }
+func (*noopE2EMetrics) SetAlertCacheLastSuccess(_ float64)           { /* no-op */ }
+func (*noopE2EMetrics) IncStatusUpdateDropped()                      { /* no-op */ }
+func (*noopE2EMetrics) SetHeartbeatMapSize(_ float64)                { /* no-op */ }
+func (*noopE2EMetrics) SetDispatchQueueLength(_ float64)             { /* no-op */ }
+func (*noopE2EMetrics) IncStatusUpdateErrors()                       { /* no-op */ }
+func (*noopE2EMetrics) IncMessagesReceived()                         { /* no-op */ }
+func (*noopE2EMetrics) IncMessageParsingErrors()                     { /* no-op */ }
+func (*noopE2EMetrics) IncMessagesWritten()                          { /* no-op */ }
+func (*noopE2EMetrics) IncWriteErrors()                              { /* no-op */ }
+func (*noopE2EMetrics) ObserveWriteLatency(_ time.Duration)          { /* no-op */ }
+func (*noopE2EMetrics) ObserveBatchSize(_ float64)                   { /* no-op */ }
+func (*noopE2EMetrics) ObserveHeartbeatTickDuration(_ time.Duration) { /* no-op */ }
 
 type noopE2ELifecycleProvider struct{}
 
