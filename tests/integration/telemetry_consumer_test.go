@@ -28,10 +28,12 @@ func (noopTelemetryHandler) HandleTelemetry(_ context.Context, _ string, _ model
 // noopMetrics satisfies telemetryConsumerMetrics without recording anything.
 type noopMetrics struct{}
 
-func (*noopMetrics) IncMessagesReceived()                { /* no-op: metrics not under test */ }
-func (*noopMetrics) IncMessagesWritten()                 { /* no-op: metrics not under test */ }
-func (*noopMetrics) IncWriteErrors()                     { /* no-op: metrics not under test */ }
-func (*noopMetrics) ObserveWriteLatency(_ time.Duration) { /* no-op: metrics not under test */ }
+func (*noopMetrics) IncMessagesReceived()                { /* no-op */ }
+func (*noopMetrics) IncMessageParsingErrors()            { /* no-op */ }
+func (*noopMetrics) IncMessagesWritten()                 { /* no-op */ }
+func (*noopMetrics) IncWriteErrors()                     { /* no-op */ }
+func (*noopMetrics) ObserveWriteLatency(_ time.Duration) { /* no-op */ }
+func (*noopMetrics) ObserveBatchSize(_ float64)          { /* no-op */ }
 
 // TestNATSTelemetryConsumerIntegrationMessageLandsInDB publishes a well-formed
 // telemetry envelope and verifies that it is written to TimescaleDB verbatim (Rule Zero).

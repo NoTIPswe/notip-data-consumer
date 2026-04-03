@@ -32,6 +32,13 @@ type AlertConfigProvider interface {
 	TimeoutFor(tenantID, gatewayID string) int64
 }
 
+// GatewayLifecycleProvider returns the current administrative lifecycle state of a gateway
+// from the Management API. Used by HeartbeatTracker to suppress false offline alerts
+// when a gateway has been intentionally paused.
+type GatewayLifecycleProvider interface {
+	GetGatewayLifecycle(ctx context.Context, tenantID, gatewayID string) (model.GatewayLifecycleState, error)
+}
+
 // ClockProvider abstracts time.Now() to enable deterministic tests.
 type ClockProvider interface {
 	Now() time.Time

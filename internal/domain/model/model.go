@@ -94,3 +94,28 @@ type GatewayStatusUpdateResponse struct {
 	Success bool   `json:"success"`
 	Error   string `json:"error,omitempty"`
 }
+
+// GatewayLifecycleState is the configured administrative state returned by management API.
+// It differs from GatewayStatus: GatewayStatus is the observed runtime state (online/offline)
+// while GatewayLifecycleState is the intended administrative state set by operators.
+type GatewayLifecycleState string
+
+const (
+	LifecycleOnline       GatewayLifecycleState = "online"
+	LifecycleOffline      GatewayLifecycleState = "offline"
+	LifecyclePaused       GatewayLifecycleState = "paused"
+	LifecycleProvisioning GatewayLifecycleState = "provisioning"
+	LifecycleUnknown      GatewayLifecycleState = "unknown" // returned locally when the query fails
+)
+
+// GatewayLifecycleRequest is the payload for the internal.mgmt.gateway.get-status RR call.
+type GatewayLifecycleRequest struct {
+	GatewayID string `json:"gateway_id"`
+	TenantID  string `json:"tenant_id"`
+}
+
+// GatewayLifecycleResponse is the response from the internal.mgmt.gateway.get-status RR call.
+type GatewayLifecycleResponse struct {
+	GatewayID string                `json:"gateway_id"`
+	State     GatewayLifecycleState `json:"state"`
+}

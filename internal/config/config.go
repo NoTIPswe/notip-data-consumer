@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -133,8 +134,20 @@ func (c *Config) GetDatabaseDSN() (string, error) {
 	}
 	password := strings.TrimSpace(string(passwordBytes))
 
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		c.DBUser, password, c.DBHost, c.DBPort, c.DBName, c.DBSSLMode), nil
+	// Safely construct the URL to automatically escape special characters
+	dsnURL := url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(c.DBUser, password),
+		Host:   fmt.Sprintf("%s:%d", c.DBHost, c.DBPort),
+		Path:   c.DBName,
+	}
+
+	// Safely append query parameters
+	q := dsnURL.Query()
+	q.Set("sslmode", c.DBSSLMode)
+	dsnURL.RawQuery = q.Encode()
+
+	return dsnURL.String(), nil
 }
 
 func envOrDefault(key, def string) string {

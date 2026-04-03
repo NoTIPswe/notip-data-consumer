@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 type HeartbeatTrackerMetrics interface {
 	IncStatusUpdateDropped()
 	SetHeartbeatMapSize(v float64)
+	SetDispatchQueueLength(v float64)
 }
 
 // gatewayKey is the composite map key.
@@ -39,11 +41,12 @@ type statusUpdateJob struct {
 // and HeartbeatTicker. It is the core domain service of this application.
 // Telemetry persistence is the responsibility of the driving adapter, not this service.
 type HeartbeatTracker struct {
-	clock          port.ClockProvider
-	alertPublisher port.AlertPublisher
-	statusUpdater  port.GatewayStatusUpdater
-	configProvider port.AlertConfigProvider
-	metrics        HeartbeatTrackerMetrics
+	clock             port.ClockProvider
+	alertPublisher    port.AlertPublisher
+	statusUpdater     port.GatewayStatusUpdater
+	configProvider    port.AlertConfigProvider
+	lifecycleProvider port.GatewayLifecycleProvider
+	metrics           HeartbeatTrackerMetrics
 
 	startTime   time.Time
 	gracePeriod time.Duration
@@ -56,29 +59,36 @@ type HeartbeatTracker struct {
 	closeOnce  sync.Once
 }
 
-// gracePeriod suppresses offline transitions for that duration after startup,
-// preventing false alerts while the service is collecting initial heartbeats.
-// statusUpdateBufSize is the capacity of the status-update dispatch channel.
+// HeartbeatTrackerConfig holds the scalar configuration values for HeartbeatTracker.
+type HeartbeatTrackerConfig struct {
+	// StatusUpdateBufSize is the capacity of the async status-update dispatch channel.
+	StatusUpdateBufSize int
+	// GracePeriod suppresses offline transitions for this duration after startup,
+	// preventing false alerts while the service collects initial heartbeats.
+	GracePeriod time.Duration
+}
+
 func NewHeartbeatTracker(
 	clock port.ClockProvider,
 	alertPublisher port.AlertPublisher,
 	statusUpdater port.GatewayStatusUpdater,
 	configProvider port.AlertConfigProvider,
+	lifecycleProvider port.GatewayLifecycleProvider,
 	metrics HeartbeatTrackerMetrics,
-	statusUpdateBufSize int,
-	gracePeriod time.Duration,
+	cfg HeartbeatTrackerConfig,
 ) *HeartbeatTracker {
 	t := &HeartbeatTracker{
-		clock:          clock,
-		alertPublisher: alertPublisher,
-		statusUpdater:  statusUpdater,
-		configProvider: configProvider,
-		metrics:        metrics,
-		startTime:      clock.Now(),
-		gracePeriod:    gracePeriod,
-		beats:          make(map[gatewayKey]*heartbeatEntry),
-		dispatchCh:     make(chan statusUpdateJob, statusUpdateBufSize),
-		done:           make(chan struct{}),
+		clock:             clock,
+		alertPublisher:    alertPublisher,
+		statusUpdater:     statusUpdater,
+		configProvider:    configProvider,
+		lifecycleProvider: lifecycleProvider,
+		metrics:           metrics,
+		startTime:         clock.Now(),
+		gracePeriod:       cfg.GracePeriod,
+		beats:             make(map[gatewayKey]*heartbeatEntry),
+		dispatchCh:        make(chan statusUpdateJob, cfg.StatusUpdateBufSize),
+		done:              make(chan struct{}),
 	}
 	go t.dispatchWorker()
 	return t
@@ -99,6 +109,7 @@ func (t *HeartbeatTracker) Close() {
 func (t *HeartbeatTracker) dispatchWorker() {
 	defer close(t.done)
 	for job := range t.dispatchCh {
+		t.metrics.SetDispatchQueueLength(float64(len(t.dispatchCh)))
 		_ = t.statusUpdater.UpdateStatus(context.Background(), job.update)
 	}
 }
@@ -184,6 +195,23 @@ func (t *HeartbeatTracker) Tick(ctx context.Context) {
 		deadline := entry.lastSeen.Add(time.Duration(timeoutMs) * time.Millisecond)
 
 		if now.Before(deadline) {
+			continue
+		}
+
+		// Lifecycle gate: query management API before acting on the timeout.
+		// Query only on timeout candidate to minimise RR load.
+		state, err := t.lifecycleProvider.GetGatewayLifecycle(ctx, entry.tenantID, entry.gatewayID)
+		if err != nil {
+			// Fail-open: proceed with alert to avoid missing real offline events.
+			// The adapter has already incremented notip_consumer_lifecycle_query_errors_total.
+			// Monitor that counter for sustained failures indicating management-api is unreachable.
+			slog.Warn("lifecycle query failed, proceeding with alert (fail-open)",
+				"tenantID", entry.tenantID,
+				"gatewayID", entry.gatewayID,
+				"err", err,
+			)
+		} else if state == model.LifecyclePaused {
+			// Gateway is intentionally paused — silence alert and offline status update.
 			continue
 		}
 

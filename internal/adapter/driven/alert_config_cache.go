@@ -14,9 +14,10 @@ type alertConfigFetcher interface {
 	FetchAlertConfigs(ctx context.Context) ([]model.AlertConfig, error)
 }
 
-// alertCacheErrRecorder is the narrow metric interface for AlertConfigCache.
-type alertCacheErrRecorder interface {
+// alertCacheMetrics is the narrow metric interface for AlertConfigCache.
+type alertCacheMetrics interface {
 	IncAlertCacheRefreshErrors()
+	SetAlertCacheLastSuccess(ts float64)
 }
 
 // alertConfigSnapshot is an immutable point-in-time copy of all alert configs.
@@ -34,7 +35,7 @@ type alertConfigSnapshot struct {
 type AlertConfigCache struct {
 	snapshot         atomic.Pointer[alertConfigSnapshot]
 	rrClient         alertConfigFetcher
-	metrics          alertCacheErrRecorder
+	metrics          alertCacheMetrics
 	defaultTimeoutMs int64
 	refreshInterval  time.Duration
 	maxRetries       int
@@ -44,7 +45,7 @@ type AlertConfigCache struct {
 // to start the initial fetch and the periodic refresh loop.
 func NewAlertConfigCache(
 	rrClient alertConfigFetcher,
-	metrics alertCacheErrRecorder,
+	metrics alertCacheMetrics,
 	defaultTimeoutMs int64,
 	refreshInterval time.Duration,
 	maxRetries int,
@@ -123,6 +124,7 @@ func (c *AlertConfigCache) refresh(ctx context.Context) error {
 	}
 
 	c.snapshot.Store(snap) // atomic swap
+	c.metrics.SetAlertCacheLastSuccess(float64(snap.fetchedAt.Unix()))
 	return nil
 }
 

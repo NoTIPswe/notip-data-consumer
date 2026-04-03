@@ -26,9 +26,11 @@ func (e permanentError) Unwrap() error { return e.cause }
 // telemetryConsumerMetrics is the narrow metric interface for NATSTelemetryConsumer.
 type telemetryConsumerMetrics interface {
 	IncMessagesReceived()
+	IncMessageParsingErrors()
 	IncMessagesWritten()
 	IncWriteErrors()
 	ObserveWriteLatency(d time.Duration)
+	ObserveBatchSize(size float64)
 }
 
 // msgAcknowledger abstracts NATS message acknowledgement so writeBatch can be
@@ -60,6 +62,18 @@ type NATSTelemetryConsumer struct {
 }
 
 func NewNATSTelemetryConsumer(
+	js nats.JetStreamContext,
+	handler port.TelemetryMessageHandler,
+	writer port.TelemetryWriter,
+	metrics telemetryConsumerMetrics,
+	durableName string,
+	batchSize int,
+	flushEvery time.Duration,
+) *NATSTelemetryConsumer {
+	return newNATSTelemetryConsumer(&jsAdapter{js: js}, handler, writer, metrics, durableName, batchSize, flushEvery)
+}
+
+func newNATSTelemetryConsumer(
 	js natsJSSubscriber,
 	handler port.TelemetryMessageHandler,
 	writer port.TelemetryWriter,
@@ -96,7 +110,7 @@ func (c *NATSTelemetryConsumer) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("subscribe %s: %w", subjectTelemetry, err)
 	}
-	defer func() { _ = sub.Unsubscribe() }()
+	defer func() { _ = sub.Drain() }()
 
 	c.flushLoop(ctx, pending)
 	return nil
@@ -161,6 +175,8 @@ func (c *NATSTelemetryConsumer) writeBatch(ctx context.Context, batch []pendingM
 		}
 	}
 
+	c.metrics.ObserveBatchSize(float64(len(rows)))
+
 	var writeErr error
 	if len(rows) > 0 {
 		start := time.Now()
@@ -170,7 +186,7 @@ func (c *NATSTelemetryConsumer) writeBatch(ctx context.Context, batch []pendingM
 
 	for _, pm := range batch {
 		if pm.err != nil {
-			// Permanent parse error term so NATS never redelivers.
+			c.metrics.IncMessageParsingErrors()
 			_ = pm.msg.Term()
 			continue
 		}

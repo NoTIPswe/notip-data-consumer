@@ -25,9 +25,13 @@ func (s *stubFetcher) FetchAlertConfigs(_ context.Context) ([]model.AlertConfig,
 	return s.configs, s.err
 }
 
-type stubCacheMetrics struct{ refreshErrors int }
+type stubCacheMetrics struct {
+	refreshErrors int
+	lastSuccessTs float64
+}
 
-func (s *stubCacheMetrics) IncAlertCacheRefreshErrors() { s.refreshErrors++ }
+func (s *stubCacheMetrics) IncAlertCacheRefreshErrors()         { s.refreshErrors++ }
+func (s *stubCacheMetrics) SetAlertCacheLastSuccess(ts float64) { s.lastSuccessTs = ts }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -222,4 +226,17 @@ func TestAlertConfigCacheFetchWithBackoffSucceedsOnFirstAttempt(t *testing.T) {
 	assert.Equal(t, int64(5000), cache.TimeoutFor("t1", "any"),
 		"a successful fetch must populate the snapshot")
 	assert.Equal(t, 0, m.refreshErrors, "no error counter incremented on success")
+}
+
+func TestAlertConfigCacheFetchWithBackoffExhaustedRetries(t *testing.T) {
+	fetcher := &stubFetcher{err: errors.New("permanent error")}
+	m := &stubCacheMetrics{}
+	cache := NewAlertConfigCache(fetcher, m, 60000, time.Hour, 1)
+
+	err := cache.fetchWithBackoff(context.Background())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exhausted 1 retries")
+	assert.Equal(t, 1, fetcher.calls)
+	assert.Equal(t, 1, m.refreshErrors)
 }
