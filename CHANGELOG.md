@@ -1,3 +1,13 @@
+# [1.1.0](https://github.com/NoTIPswe/notip-data-consumer/compare/v1.0.1...v1.1.0) (2026-04-03)
+
+
+### Features
+
+* added status management with RR to management api ([d2792fe](https://github.com/NoTIPswe/notip-data-consumer/commit/d2792fe2bc1a7824cba31d7f6b6e27cd85dfc92b))
+* enhance metrics tracking for telemetry and heartbeat components ([4dee7fd](https://github.com/NoTIPswe/notip-data-consumer/commit/4dee7fd5447ec03848f96704d4560a0da9d07f93))
+* enhance NATS consumers and metrics integration tests ([b8c8064](https://github.com/NoTIPswe/notip-data-consumer/commit/b8c8064f03e7d4a2c2397c83cc72bdc495306195))
+* refactor test cases to use constants for gateway IDs and endpoints ([a2322c3](https://github.com/NoTIPswe/notip-data-consumer/commit/a2322c335525e2ae85decb7778cc18b2966b3a93))
+
 ## [1.0.1](https://github.com/NoTIPswe/notip-data-consumer/compare/v1.0.0...v1.0.1) (2026-03-30)
 
 
