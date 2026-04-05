@@ -35,6 +35,7 @@ func TestLoadDefaults(t *testing.T) {
 	assert.Equal(t, 10, cfg.DBMaxConns)
 	assert.Equal(t, 2, cfg.DBMinConns)
 	assert.Equal(t, "require", cfg.DBSSLMode)
+	assert.Equal(t, "", cfg.DBSSLRootCert)
 	assert.Equal(t, 1000, cfg.GatewayBufferSize)
 	assert.Equal(t, 10000, cfg.HeartbeatTickMs)
 	assert.Equal(t, 120000, cfg.HeartbeatGracePeriodMs)
@@ -114,6 +115,27 @@ func TestLoadInvalidDBSSLMode(t *testing.T) {
 	assert.Contains(t, err.Error(), "DB_SSL_MODE")
 }
 
+func TestLoadVerifyFullRequiresRootCert(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("DB_SSL_MODE", "verify-full")
+	t.Setenv("DB_SSL_ROOT_CERT", "")
+
+	_, err := Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "DB_SSL_ROOT_CERT")
+}
+
+func TestLoadVerifyFullWithRootCert(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("DB_SSL_MODE", "verify-full")
+	t.Setenv("DB_SSL_ROOT_CERT", "/certs/ca.crt")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "verify-full", cfg.DBSSLMode)
+	assert.Equal(t, "/certs/ca.crt", cfg.DBSSLRootCert)
+}
+
 func TestGetDatabaseDSN(t *testing.T) {
 	secretFile := filepath.Join(t.TempDir(), "db_password")
 	require.NoError(t, os.WriteFile(secretFile, []byte("s3cr3t\n"), 0o600))
@@ -130,6 +152,25 @@ func TestGetDatabaseDSN(t *testing.T) {
 	dsn, err := cfg.GetDatabaseDSN()
 	require.NoError(t, err)
 	assert.Equal(t, "postgres://notip_measures:s3cr3t@measures-db:5432/notip_measures?sslmode=disable", dsn)
+}
+
+func TestGetDatabaseDSNWithRootCert(t *testing.T) {
+	secretFile := filepath.Join(t.TempDir(), "db_password")
+	require.NoError(t, os.WriteFile(secretFile, []byte("s3cr3t\n"), 0o600))
+
+	cfg := &Config{
+		DBUser:         "notip_measures",
+		DBHost:         "measures-db",
+		DBPort:         5432,
+		DBName:         "notip_measures",
+		DBPasswordFile: secretFile,
+		DBSSLMode:      "verify-full",
+		DBSSLRootCert:  "/certs/ca.crt",
+	}
+
+	dsn, err := cfg.GetDatabaseDSN()
+	require.NoError(t, err)
+	assert.Equal(t, "postgres://notip_measures:s3cr3t@measures-db:5432/notip_measures?sslmode=verify-full&sslrootcert=/certs/ca.crt", dsn)
 }
 
 func TestGetDatabaseDSNMissingFile(t *testing.T) {

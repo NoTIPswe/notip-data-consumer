@@ -24,6 +24,7 @@ type Config struct {
 	DBMaxConns     int
 	DBMinConns     int
 	DBSSLMode      string
+	DBSSLRootCert  string
 
 	GatewayBufferSize           int
 	HeartbeatTickMs             int
@@ -65,6 +66,7 @@ func Load() (*Config, error) {
 	l.require("DB_NAME", &cfg.DBName)
 	l.require("DB_USER", &cfg.DBUser)
 	l.require("DB_PASSWORD_FILE", &cfg.DBPasswordFile)
+	cfg.DBSSLRootCert = os.Getenv("DB_SSL_ROOT_CERT")
 
 	// Optional overrides
 	l.optInt("DB_PORT", &cfg.DBPort)
@@ -81,6 +83,9 @@ func Load() (*Config, error) {
 	if l.err == nil {
 		if err := validateDBSSLMode(cfg.DBSSLMode); err != nil {
 			l.err = err
+		}
+		if (cfg.DBSSLMode == "verify-ca" || cfg.DBSSLMode == "verify-full") && cfg.DBSSLRootCert == "" {
+			l.err = fmt.Errorf("DB_SSL_ROOT_CERT is required when DB_SSL_MODE=%q", cfg.DBSSLMode)
 		}
 	}
 
@@ -126,6 +131,7 @@ func (l *loader) optInt64(key string, dst *int64) {
 
 // GetDatabaseDSN constructs the Postgres DSN by reading the password from the Docker secret file.
 // SSL mode is controlled by the DB_SSL_MODE environment variable (default: require).
+// DB_SSL_ROOT_CERT is appended to the DSN when provided.
 func (c *Config) GetDatabaseDSN() (string, error) {
 	passwordBytes, err := os.ReadFile(c.DBPasswordFile)
 	if err != nil {
@@ -133,8 +139,13 @@ func (c *Config) GetDatabaseDSN() (string, error) {
 	}
 	password := strings.TrimSpace(string(passwordBytes))
 
-	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		c.DBUser, password, c.DBHost, c.DBPort, c.DBName, c.DBSSLMode), nil
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		c.DBUser, password, c.DBHost, c.DBPort, c.DBName, c.DBSSLMode)
+	if c.DBSSLRootCert != "" {
+		dsn += fmt.Sprintf("&sslrootcert=%s", c.DBSSLRootCert)
+	}
+
+	return dsn, nil
 }
 
 func envOrDefault(key, def string) string {
