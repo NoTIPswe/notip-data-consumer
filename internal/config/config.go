@@ -2,9 +2,17 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
+)
+
+const (
+	dbSSLModeDisable    = "disable"
+	dbSSLModeRequire    = "require"
+	dbSSLModeVerifyCA   = "verify-ca"
+	dbSSLModeVerifyFull = "verify-full"
 )
 
 // Config holds all configuration loaded from environment variables at startup.
@@ -43,7 +51,7 @@ func Load() (*Config, error) {
 		DBPort:                      5432,
 		DBMaxConns:                  10,
 		DBMinConns:                  2,
-		DBSSLMode:                   envOrDefault("DB_SSL_MODE", "require"),
+		DBSSLMode:                   envOrDefault("DB_SSL_MODE", dbSSLModeRequire),
 		GatewayBufferSize:           1000,
 		HeartbeatTickMs:             10000,
 		HeartbeatGracePeriodMs:      120000,
@@ -84,7 +92,7 @@ func Load() (*Config, error) {
 		if err := validateDBSSLMode(cfg.DBSSLMode); err != nil {
 			l.err = err
 		}
-		if (cfg.DBSSLMode == "verify-ca" || cfg.DBSSLMode == "verify-full") && cfg.DBSSLRootCert == "" {
+		if requiresDBSSLRootCert(cfg.DBSSLMode) && cfg.DBSSLRootCert == "" {
 			l.err = fmt.Errorf("DB_SSL_ROOT_CERT is required when DB_SSL_MODE=%q", cfg.DBSSLMode)
 		}
 	}
@@ -139,28 +147,21 @@ func (c *Config) GetDatabaseDSN() (string, error) {
 	}
 	password := strings.TrimSpace(string(passwordBytes))
 
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
-		c.DBUser, password, c.DBHost, c.DBPort, c.DBName, c.DBSSLMode)
-	if c.DBSSLRootCert != "" {
-		dsn += fmt.Sprintf("&sslrootcert=%s", c.DBSSLRootCert)
+	dsnURL := &url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(c.DBUser, password),
+		Host:   fmt.Sprintf("%s:%d", c.DBHost, c.DBPort),
+		Path:   c.DBName,
 	}
 
-<<<<<<< Updated upstream
-	return dsn, nil
-=======
-	// Safely append query parameters
 	q := dsnURL.Query()
 	q.Set("sslmode", c.DBSSLMode)
-	if c.DBSSLRootCert != "" {
-		switch c.DBSSLMode {
-		case "verify-ca", "verify-full":
-			q.Set("sslrootcert", c.DBSSLRootCert)
-		}
+	if c.DBSSLRootCert != "" && requiresDBSSLRootCert(c.DBSSLMode) {
+		q.Set("sslrootcert", c.DBSSLRootCert)
 	}
 	dsnURL.RawQuery = q.Encode()
 
 	return dsnURL.String(), nil
->>>>>>> Stashed changes
 }
 
 func envOrDefault(key, def string) string {
@@ -196,9 +197,18 @@ func parseInt64(s string, dst *int64) error {
 
 func validateDBSSLMode(v string) error {
 	switch v {
-	case "disable", "require", "verify-ca", "verify-full":
+	case dbSSLModeDisable, dbSSLModeRequire, dbSSLModeVerifyCA, dbSSLModeVerifyFull:
 		return nil
 	default:
 		return fmt.Errorf("DB_SSL_MODE: invalid value %q", v)
+	}
+}
+
+func requiresDBSSLRootCert(mode string) bool {
+	switch mode {
+	case dbSSLModeVerifyCA, dbSSLModeVerifyFull:
+		return true
+	default:
+		return false
 	}
 }

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,14 +10,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testCertCAPath  = "/certs/ca.crt"
+	testDBHost      = "measures-db"
+	testDBSSLVerify = "verify-full"
+)
+
 // Set all the required env varibles.
 func setRequiredEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("NATS_URL", "tls://nats:4222")
-	t.Setenv("NATS_TLS_CA", "/certs/ca.crt")
+	t.Setenv("NATS_TLS_CA", testCertCAPath)
 	t.Setenv("NATS_TLS_CERT", "/certs/data-consumer.crt")
 	t.Setenv("NATS_TLS_KEY", "/certs/data-consumer.key")
-	t.Setenv("DB_HOST", "measures-db")
+	t.Setenv("DB_HOST", testDBHost)
 	t.Setenv("DB_NAME", "notip_measures")
 	t.Setenv("DB_USER", "notip_measures")
 	t.Setenv("DB_PASSWORD_FILE", "/run/secrets/measures_db_password")
@@ -84,7 +91,7 @@ func TestLoadMissingDBFields(t *testing.T) {
 func TestLoadOptionalOverrides(t *testing.T) {
 	setRequiredEnv(t)
 	t.Setenv("DB_PORT", "5433")
-	t.Setenv("DB_SSL_ROOT_CERT", "/certs/ca.crt")
+	t.Setenv("DB_SSL_ROOT_CERT", testCertCAPath)
 	t.Setenv("HEARTBEAT_TICK_MS", "5000")
 	t.Setenv("GATEWAY_BUFFER_SIZE", "500")
 	t.Setenv("METRICS_ADDR", ":8888")
@@ -93,7 +100,7 @@ func TestLoadOptionalOverrides(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, 5433, cfg.DBPort)
-	assert.Equal(t, "/certs/ca.crt", cfg.DBSSLRootCert)
+	assert.Equal(t, testCertCAPath, cfg.DBSSLRootCert)
 	assert.Equal(t, 5000, cfg.HeartbeatTickMs)
 	assert.Equal(t, 500, cfg.GatewayBufferSize)
 	assert.Equal(t, ":8888", cfg.MetricsAddr)
@@ -119,7 +126,7 @@ func TestLoadInvalidDBSSLMode(t *testing.T) {
 
 func TestLoadVerifyFullRequiresRootCert(t *testing.T) {
 	setRequiredEnv(t)
-	t.Setenv("DB_SSL_MODE", "verify-full")
+	t.Setenv("DB_SSL_MODE", testDBSSLVerify)
 	t.Setenv("DB_SSL_ROOT_CERT", "")
 
 	_, err := Load()
@@ -129,22 +136,23 @@ func TestLoadVerifyFullRequiresRootCert(t *testing.T) {
 
 func TestLoadVerifyFullWithRootCert(t *testing.T) {
 	setRequiredEnv(t)
-	t.Setenv("DB_SSL_MODE", "verify-full")
-	t.Setenv("DB_SSL_ROOT_CERT", "/certs/ca.crt")
+	t.Setenv("DB_SSL_MODE", testDBSSLVerify)
+	t.Setenv("DB_SSL_ROOT_CERT", testCertCAPath)
 
 	cfg, err := Load()
 	require.NoError(t, err)
-	assert.Equal(t, "verify-full", cfg.DBSSLMode)
-	assert.Equal(t, "/certs/ca.crt", cfg.DBSSLRootCert)
+	assert.Equal(t, testDBSSLVerify, cfg.DBSSLMode)
+	assert.Equal(t, testCertCAPath, cfg.DBSSLRootCert)
 }
 
 func TestGetDatabaseDSN(t *testing.T) {
 	secretFile := filepath.Join(t.TempDir(), "db_password")
-	require.NoError(t, os.WriteFile(secretFile, []byte("s3cr3t\n"), 0o600))
+	password := "test-db-pass-1"
+	require.NoError(t, os.WriteFile(secretFile, []byte(password+"\n"), 0o600))
 
 	cfg := &Config{
 		DBUser:         "notip_measures",
-		DBHost:         "measures-db",
+		DBHost:         testDBHost,
 		DBPort:         5432,
 		DBName:         "notip_measures",
 		DBPasswordFile: secretFile,
@@ -153,34 +161,50 @@ func TestGetDatabaseDSN(t *testing.T) {
 
 	dsn, err := cfg.GetDatabaseDSN()
 	require.NoError(t, err)
-	assert.Equal(t, "postgres://notip_measures:s3cr3t@measures-db:5432/notip_measures?sslmode=disable", dsn)
+
+	parsed, err := url.Parse(dsn)
+	require.NoError(t, err)
+	userPassword, ok := parsed.User.Password()
+	require.True(t, ok)
+
+	assert.Equal(t, "postgres", parsed.Scheme)
+	assert.Equal(t, "notip_measures", parsed.User.Username())
+	assert.Equal(t, password, userPassword)
+	assert.Equal(t, testDBHost+":5432", parsed.Host)
+	assert.Equal(t, "/notip_measures", parsed.Path)
+	assert.Equal(t, "disable", parsed.Query().Get("sslmode"))
 }
 
 func TestGetDatabaseDSNWithRootCert(t *testing.T) {
 	secretFile := filepath.Join(t.TempDir(), "db_password")
-	require.NoError(t, os.WriteFile(secretFile, []byte("s3cr3t\n"), 0o600))
+	password := "test-db-pass-2"
+	require.NoError(t, os.WriteFile(secretFile, []byte(password+"\n"), 0o600))
 
 	cfg := &Config{
 		DBUser:         "notip_measures",
-		DBHost:         "measures-db",
+		DBHost:         testDBHost,
 		DBPort:         5432,
 		DBName:         "notip_measures",
 		DBPasswordFile: secretFile,
-		DBSSLMode:      "verify-full",
-		DBSSLRootCert:  "/certs/ca.crt",
+		DBSSLMode:      testDBSSLVerify,
+		DBSSLRootCert:  testCertCAPath,
 	}
 
 	dsn, err := cfg.GetDatabaseDSN()
 	require.NoError(t, err)
-<<<<<<< Updated upstream
-	assert.Equal(t, "postgres://notip_measures:s3cr3t@measures-db:5432/notip_measures?sslmode=verify-full&sslrootcert=/certs/ca.crt", dsn)
-=======
-	assert.Equal(
-		t,
-		"postgres://notip_measures:s3cr3t@measures-db:5432/notip_measures?sslmode=verify-full&sslrootcert=%2Fcerts%2Fca.crt",
-		dsn,
-	)
->>>>>>> Stashed changes
+
+	parsed, err := url.Parse(dsn)
+	require.NoError(t, err)
+	userPassword, ok := parsed.User.Password()
+	require.True(t, ok)
+
+	assert.Equal(t, "postgres", parsed.Scheme)
+	assert.Equal(t, "notip_measures", parsed.User.Username())
+	assert.Equal(t, password, userPassword)
+	assert.Equal(t, testDBHost+":5432", parsed.Host)
+	assert.Equal(t, "/notip_measures", parsed.Path)
+	assert.Equal(t, testDBSSLVerify, parsed.Query().Get("sslmode"))
+	assert.Equal(t, testCertCAPath, parsed.Query().Get("sslrootcert"))
 }
 
 func TestGetDatabaseDSNMissingFile(t *testing.T) {
