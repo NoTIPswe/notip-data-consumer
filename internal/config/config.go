@@ -145,7 +145,22 @@ func (c *Config) GetDatabaseDSN() (string, error) {
 		dsn += fmt.Sprintf("&sslrootcert=%s", c.DBSSLRootCert)
 	}
 
+<<<<<<< Updated upstream
 	return dsn, nil
+=======
+	// Safely append query parameters
+	q := dsnURL.Query()
+	q.Set("sslmode", c.DBSSLMode)
+	if c.DBSSLRootCert != "" {
+		switch c.DBSSLMode {
+		case "verify-ca", "verify-full":
+			q.Set("sslrootcert", c.DBSSLRootCert)
+		}
+	}
+	dsnURL.RawQuery = q.Encode()
+
+	return dsnURL.String(), nil
+>>>>>>> Stashed changes
 }
 
 func envOrDefault(key, def string) string {

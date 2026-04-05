@@ -20,6 +20,7 @@ import (
 	"github.com/NoTIPswe/notip-data-consumer/internal/config"
 	"github.com/NoTIPswe/notip-data-consumer/internal/metrics"
 	"github.com/NoTIPswe/notip-data-consumer/internal/service"
+	"github.com/NoTIPswe/notip-data-consumer/migrations"
 )
 
 const (
@@ -87,6 +88,10 @@ func run() error {
 		return fmt.Errorf("create pgxpool: %w", err)
 	}
 	defer pool.Close()
+
+	if err := migrations.Apply(ctx, pool); err != nil {
+		return fmt.Errorf("apply database migrations: %w", err)
+	}
 
 	// ── Build adapters ──────────────────────────────────────────────────────────
 	rrClient := driven.NewNATSRRClient(nc, natsRRTimeout)
