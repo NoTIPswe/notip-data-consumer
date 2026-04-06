@@ -3,6 +3,7 @@ package driven
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync/atomic"
 	"time"
 
@@ -35,6 +36,7 @@ type AlertConfigCache struct {
 	snapshot         atomic.Pointer[alertConfigSnapshot]
 	rrClient         alertConfigFetcher
 	metrics          alertCacheErrRecorder
+	logger           *slog.Logger
 	defaultTimeoutMs int64
 	refreshInterval  time.Duration
 	maxRetries       int
@@ -52,6 +54,7 @@ func NewAlertConfigCache(
 	c := &AlertConfigCache{
 		rrClient:         rrClient,
 		metrics:          metrics,
+		logger:           slog.Default(),
 		defaultTimeoutMs: defaultTimeoutMs,
 		refreshInterval:  refreshInterval,
 		maxRetries:       maxRetries,
@@ -96,6 +99,7 @@ func (c *AlertConfigCache) Run(ctx context.Context) {
 		case <-ticker.C:
 			if err := c.refresh(ctx); err != nil {
 				c.metrics.IncAlertCacheRefreshErrors()
+				c.logger.Error("alert config cache refresh failed", "err", err)
 			}
 		}
 	}
@@ -138,6 +142,7 @@ func (c *AlertConfigCache) fetchWithBackoff(ctx context.Context) error {
 		} else {
 			lastErr = err
 			c.metrics.IncAlertCacheRefreshErrors()
+			c.logger.Error("alert config cache initial fetch failed", "attempt", attempt+1, "err", err)
 		}
 
 		select {
