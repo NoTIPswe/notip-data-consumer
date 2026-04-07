@@ -26,10 +26,16 @@ func (s *stubDecommissionHandler) HandleDecommission(tenantID, gatewayID string)
 	s.calls++
 }
 
-// simulates a JetStream context whose Subscribe always fails.
+// fakeSubscription satisfies drainableSubscription without a live NATS connection.
+type fakeSubscription struct{}
+
+func (f *fakeSubscription) Drain() error       { return nil }
+func (f *fakeSubscription) Unsubscribe() error { return nil }
+
+// stubFailingSubscriber simulates a JetStream context whose Subscribe always fails.
 type stubFailingSubscriber struct{ err error }
 
-func (s *stubFailingSubscriber) Subscribe(_ string, _ nats.MsgHandler, _ ...nats.SubOpt) (*nats.Subscription, error) {
+func (s *stubFailingSubscriber) Subscribe(_ string, _ nats.MsgHandler, _ ...nats.SubOpt) (drainableSubscription, error) {
 	return nil, s.err
 }
 
@@ -37,16 +43,16 @@ type stubDecommissionSubscriber struct {
 	subject string
 }
 
-func (s *stubDecommissionSubscriber) Subscribe(subj string, _ nats.MsgHandler, _ ...nats.SubOpt) (*nats.Subscription, error) {
+func (s *stubDecommissionSubscriber) Subscribe(subj string, _ nats.MsgHandler, _ ...nats.SubOpt) (drainableSubscription, error) {
 	s.subject = subj
-	return &nats.Subscription{}, nil
+	return &fakeSubscription{}, nil
 }
 
 // constructor
 
-func TestNewNATSDecommissionConsumerSetsFields(t *testing.T) {
+func TestNATSDecommissionConsumerSetsFields(t *testing.T) {
 	handler := &stubDecommissionHandler{}
-	c := NewNATSDecommissionConsumer(nil, handler)
+	c := newNATSDecommissionConsumer(nil, handler)
 
 	assert.NotNil(t, c)
 	assert.Equal(t, handler, c.handler)
@@ -109,7 +115,7 @@ func TestNATSDecommissionConsumerHandleMsgBadSubjectTerms(t *testing.T) {
 
 func TestNATSDecommissionConsumerRunReturnsSubscribeError(t *testing.T) {
 	sentinel := errors.New("nats: not connected")
-	c := NewNATSDecommissionConsumer(&stubFailingSubscriber{err: sentinel}, &stubDecommissionHandler{})
+	c := newNATSDecommissionConsumer(&stubFailingSubscriber{err: sentinel}, &stubDecommissionHandler{})
 
 	err := c.Run(context.Background())
 
@@ -120,7 +126,7 @@ func TestNATSDecommissionConsumerRunReturnsSubscribeError(t *testing.T) {
 
 func TestNATSDecommissionConsumerRunStopsOnContextCancel(t *testing.T) {
 	sub := &stubDecommissionSubscriber{}
-	c := NewNATSDecommissionConsumer(sub, &stubDecommissionHandler{})
+	c := newNATSDecommissionConsumer(sub, &stubDecommissionHandler{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)

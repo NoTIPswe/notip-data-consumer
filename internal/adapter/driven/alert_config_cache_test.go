@@ -25,9 +25,13 @@ func (s *stubFetcher) FetchAlertConfigs(_ context.Context) ([]model.AlertConfig,
 	return s.configs, s.err
 }
 
-type stubCacheMetrics struct{ refreshErrors int }
+type stubCacheMetrics struct {
+	refreshErrors int
+	lastSuccessTs float64
+}
 
-func (s *stubCacheMetrics) IncAlertCacheRefreshErrors() { s.refreshErrors++ }
+func (s *stubCacheMetrics) IncAlertCacheRefreshErrors()         { s.refreshErrors++ }
+func (s *stubCacheMetrics) SetAlertCacheLastSuccess(ts float64) { s.lastSuccessTs = ts }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 

@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -42,6 +43,7 @@ type mockMetrics struct {
 	mu                  sync.Mutex
 	statusUpdateDropped int
 	heartbeatMapSize    float64
+	dispatchQueueLength float64
 }
 
 func (m *mockMetrics) IncStatusUpdateDropped() {
@@ -56,6 +58,12 @@ func (m *mockMetrics) SetHeartbeatMapSize(v float64) {
 	m.heartbeatMapSize = v
 }
 
+func (m *mockMetrics) SetDispatchQueueLength(v float64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dispatchQueueLength = v
+}
+
 func (m *mockMetrics) dropped() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -66,6 +74,23 @@ func (m *mockMetrics) mapSize() float64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.heartbeatMapSize
+}
+
+// alwaysOnlineLifecycleProvider is a stub used in tests that do not exercise the lifecycle gate.
+type alwaysOnlineLifecycleProvider struct{}
+
+func (p *alwaysOnlineLifecycleProvider) GetGatewayLifecycle(_ context.Context, _, _ string) (model.GatewayLifecycleState, error) {
+	return model.LifecycleOnline, nil
+}
+
+// mockLifecycleProvider returns a configurable lifecycle state or error.
+type mockLifecycleProvider struct {
+	state model.GatewayLifecycleState
+	err   error
+}
+
+func (m *mockLifecycleProvider) GetGatewayLifecycle(_ context.Context, _, _ string) (model.GatewayLifecycleState, error) {
+	return m.state, m.err
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -86,7 +111,9 @@ func syncRun(wg *sync.WaitGroup) func(mock.Arguments) {
 	return func(_ mock.Arguments) { wg.Done() }
 }
 
-// newTracker builds a tracker with gracePeriod=0 and registers t.Cleanup(tr.Close).
+// newTracker builds a tracker with gracePeriod=0 and an always-online lifecycle stub.
+// Registers t.Cleanup(tr.Close). Tests that exercise the lifecycle gate should build
+// the tracker directly using service.NewHeartbeatTracker with a mockLifecycleProvider.
 func newTracker(
 	t *testing.T,
 	clk *mockClock,
@@ -100,9 +127,9 @@ func newTracker(
 	tr := service.NewHeartbeatTracker(
 		clk, publisher, updater,
 		&mockConfigProvider{timeoutMs},
+		&alwaysOnlineLifecycleProvider{},
 		m,
-		bufSize,
-		0, // gracePeriod=0: Tick runs immediately from startup
+		service.HeartbeatTrackerConfig{StatusUpdateBufSize: bufSize},
 	)
 	t.Cleanup(tr.Close)
 	return tr, m
@@ -252,8 +279,9 @@ func TestTick(t *testing.T) {
 
 		m := &mockMetrics{}
 		tr := service.NewHeartbeatTracker(
-			clk, publisher, updater, &mockConfigProvider{60000}, m, 10,
-			5*time.Minute,
+			clk, publisher, updater, &mockConfigProvider{60000},
+			&alwaysOnlineLifecycleProvider{}, m,
+			service.HeartbeatTrackerConfig{StatusUpdateBufSize: 10, GracePeriod: 5 * time.Minute},
 		)
 		t.Cleanup(tr.Close)
 
@@ -375,7 +403,9 @@ func TestTick(t *testing.T) {
 
 		metrics := &mockMetrics{}
 		tr := service.NewHeartbeatTracker(
-			clk, publisher, updater, &mockConfigProvider{60000}, metrics, 1, 0,
+			clk, publisher, updater, &mockConfigProvider{60000},
+			&alwaysOnlineLifecycleProvider{}, metrics,
+			service.HeartbeatTrackerConfig{StatusUpdateBufSize: 1},
 		)
 		t.Cleanup(func() { close(unblock); tr.Close() })
 
@@ -390,5 +420,73 @@ func TestTick(t *testing.T) {
 		_ = tr.HandleTelemetry(context.Background(), tenantID, envelope("gw-3"))
 
 		assert.Equal(t, 1, metrics.dropped())
+	})
+
+	t.Run("paused lifecycle suppresses alert and offline update on timeout", func(t *testing.T) {
+		clk := &mockClock{now: epoch}
+		publisher := &mockAlertPublisher{}
+		updater := &mockStatusUpdater{}
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		updater.On("UpdateStatus", mock.Anything, mock.MatchedBy(func(u model.GatewayStatusUpdate) bool {
+			return u.Status == model.Online
+		})).Run(syncRun(&wg)).Return(nil).Once()
+
+		m := &mockMetrics{}
+		tr := service.NewHeartbeatTracker(
+			clk, publisher, updater, &mockConfigProvider{60000},
+			&mockLifecycleProvider{state: model.LifecyclePaused}, m,
+			service.HeartbeatTrackerConfig{StatusUpdateBufSize: 10},
+		)
+		t.Cleanup(tr.Close)
+
+		_ = tr.HandleTelemetry(context.Background(), tenantID, envelope(gatewayID))
+		wg.Wait()
+
+		clk.now = epoch.Add(2 * time.Minute)
+		tr.Tick(context.Background())
+		tr.Close()
+
+		publisher.AssertNotCalled(t, "Publish")
+		updater.AssertNumberOfCalls(t, "UpdateStatus", 1) // only the initial Online, no Offline
+	})
+
+	t.Run("lifecycle query error falls back to alert (fail-open)", func(t *testing.T) {
+		clk := &mockClock{now: epoch}
+		publisher := &mockAlertPublisher{}
+		updater := &mockStatusUpdater{}
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		updater.On("UpdateStatus", mock.Anything, mock.MatchedBy(func(u model.GatewayStatusUpdate) bool {
+			return u.Status == model.Online
+		})).Run(syncRun(&wg)).Return(nil).Once()
+
+		m := &mockMetrics{}
+		tr := service.NewHeartbeatTracker(
+			clk, publisher, updater, &mockConfigProvider{60000},
+			&mockLifecycleProvider{err: errors.New("management api unreachable")}, m,
+			service.HeartbeatTrackerConfig{StatusUpdateBufSize: 10},
+		)
+		t.Cleanup(tr.Close)
+
+		_ = tr.HandleTelemetry(context.Background(), tenantID, envelope(gatewayID))
+		wg.Wait()
+
+		publisher.On("Publish", mock.Anything, tenantID, mock.MatchedBy(func(p model.AlertPayload) bool {
+			return p.GatewayID == gatewayID
+		})).Return(nil).Once()
+		wg.Add(1)
+		updater.On("UpdateStatus", mock.Anything, mock.MatchedBy(func(u model.GatewayStatusUpdate) bool {
+			return u.Status == model.Offline
+		})).Run(syncRun(&wg)).Return(nil).Once()
+
+		clk.now = epoch.Add(2 * time.Minute)
+		tr.Tick(context.Background())
+		wg.Wait()
+
+		publisher.AssertExpectations(t)
+		updater.AssertExpectations(t)
 	})
 }

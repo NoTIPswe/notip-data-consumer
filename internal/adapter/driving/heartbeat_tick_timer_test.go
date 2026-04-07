@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// ─── stub ─────────────────────────────────────────────────────────────────────
+// ─── stubs ────────────────────────────────────────────────────────────────────
 
 type stubHeartbeatTicker struct {
 	calls atomic.Int32
@@ -19,11 +19,19 @@ func (s *stubHeartbeatTicker) Tick(_ context.Context) {
 	s.calls.Add(1)
 }
 
+type stubTickMetrics struct {
+	observations atomic.Int32
+}
+
+func (s *stubTickMetrics) ObserveHeartbeatTickDuration(_ time.Duration) {
+	s.observations.Add(1)
+}
+
 // ─── tests ────────────────────────────────────────────────────────────────────
 
 func TestHeartbeatTickTimerCallsTickOnInterval(t *testing.T) {
 	stub := &stubHeartbeatTicker{}
-	timer := NewHeartbeatTickTimer(stub, 20*time.Millisecond)
+	timer := NewHeartbeatTickTimer(stub, &stubTickMetrics{}, 20*time.Millisecond)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Millisecond)
 	defer cancel()
@@ -37,7 +45,7 @@ func TestHeartbeatTickTimerCallsTickOnInterval(t *testing.T) {
 
 func TestHeartbeatTickTimerStopsOnContextCancel(t *testing.T) {
 	stub := &stubHeartbeatTicker{}
-	timer := NewHeartbeatTickTimer(stub, time.Hour) // very long interval should never fire
+	timer := NewHeartbeatTickTimer(stub, &stubTickMetrics{}, time.Hour) // very long interval should never fire
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

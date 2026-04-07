@@ -7,15 +7,21 @@ import (
 	"github.com/NoTIPswe/notip-data-consumer/internal/domain/port"
 )
 
-// owns a time.Tiker and drives port.HeartbeatTicker on each interval.
+// heartbeatTickMetrics is the narrow metric interface for HeartbeatTickTimer.
+type heartbeatTickMetrics interface {
+	ObserveHeartbeatTickDuration(d time.Duration)
+}
+
+// HeartbeatTickTimer owns a time.Ticker and drives port.HeartbeatTicker on each interval.
 type HeartbeatTickTimer struct {
 	ticker   port.HeartbeatTicker
+	metrics  heartbeatTickMetrics
 	interval time.Duration
 }
 
-// constructs the heartbeatticker.
-func NewHeartbeatTickTimer(ticker port.HeartbeatTicker, interval time.Duration) *HeartbeatTickTimer {
-	return &HeartbeatTickTimer{ticker: ticker, interval: interval}
+// NewHeartbeatTickTimer constructs a HeartbeatTickTimer.
+func NewHeartbeatTickTimer(ticker port.HeartbeatTicker, metrics heartbeatTickMetrics, interval time.Duration) *HeartbeatTickTimer {
+	return &HeartbeatTickTimer{ticker: ticker, metrics: metrics, interval: interval}
 }
 
 func (h *HeartbeatTickTimer) Run(ctx context.Context) {
@@ -27,7 +33,9 @@ func (h *HeartbeatTickTimer) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			h.ticker.Tick(ctx) // calls the tick
+			start := time.Now()
+			h.ticker.Tick(ctx)
+			h.metrics.ObserveHeartbeatTickDuration(time.Since(start))
 		}
 	}
 }

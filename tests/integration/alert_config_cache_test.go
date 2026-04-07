@@ -24,7 +24,8 @@ type noopCacheMetrics struct {
 	refreshErrors atomic.Int64
 }
 
-func (m *noopCacheMetrics) IncAlertCacheRefreshErrors() { m.refreshErrors.Add(1) }
+func (m *noopCacheMetrics) IncAlertCacheRefreshErrors()        { m.refreshErrors.Add(1) }
+func (m *noopCacheMetrics) SetAlertCacheLastSuccess(_ float64) { /* no-op */ }
 
 // TestAlertConfigCacheIntegrationInitialFetchPopulatesCache starts the cache
 // with a mock responder and verifies that TimeoutFor returns the fetched value

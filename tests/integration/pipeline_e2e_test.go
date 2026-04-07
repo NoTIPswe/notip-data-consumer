@@ -29,16 +29,27 @@ const (
 // (alertPublisher, alertCache, heartbeatTracker, statusUpdater, telemetryConsumer).
 type noopE2EMetrics struct{}
 
-func (*noopE2EMetrics) IncAlertsPublished()                 { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) IncAlertPublishErrors()              { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) IncAlertCacheRefreshErrors()         { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) IncStatusUpdateDropped()             { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) SetHeartbeatMapSize(_ float64)       { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) IncStatusUpdateErrors()              { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) IncMessagesReceived()                { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) IncMessagesWritten()                 { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) IncWriteErrors()                     { /* no-op: metrics not under test */ }
-func (*noopE2EMetrics) ObserveWriteLatency(_ time.Duration) { /* no-op: metrics not under test */ }
+func (*noopE2EMetrics) IncAlertsPublished()                          { /* no-op */ }
+func (*noopE2EMetrics) IncAlertPublishErrors()                       { /* no-op */ }
+func (*noopE2EMetrics) IncAlertCacheRefreshErrors()                  { /* no-op */ }
+func (*noopE2EMetrics) SetAlertCacheLastSuccess(_ float64)           { /* no-op */ }
+func (*noopE2EMetrics) IncStatusUpdateDropped()                      { /* no-op */ }
+func (*noopE2EMetrics) SetHeartbeatMapSize(_ float64)                { /* no-op */ }
+func (*noopE2EMetrics) SetDispatchQueueLength(_ float64)             { /* no-op */ }
+func (*noopE2EMetrics) IncStatusUpdateErrors()                       { /* no-op */ }
+func (*noopE2EMetrics) IncMessagesReceived()                         { /* no-op */ }
+func (*noopE2EMetrics) IncMessageParsingErrors()                     { /* no-op */ }
+func (*noopE2EMetrics) IncMessagesWritten()                          { /* no-op */ }
+func (*noopE2EMetrics) IncWriteErrors()                              { /* no-op */ }
+func (*noopE2EMetrics) ObserveWriteLatency(_ time.Duration)          { /* no-op */ }
+func (*noopE2EMetrics) ObserveBatchSize(_ float64)                   { /* no-op */ }
+func (*noopE2EMetrics) ObserveHeartbeatTickDuration(_ time.Duration) { /* no-op */ }
+
+type noopE2ELifecycleProvider struct{}
+
+func (*noopE2ELifecycleProvider) GetGatewayLifecycle(_ context.Context, _, _ string) (model.GatewayLifecycleState, error) {
+	return model.LifecycleOnline, nil
+}
 
 // TestPipelineE2EFullDataFlow wires all production adapters together (mirroring
 // main.go) and verifies the complete data path end-to-end:
@@ -89,9 +100,12 @@ func TestPipelineE2EFullDataFlow(t *testing.T) {
 		alertPublisher,
 		statusSpy,
 		alertCache,
+		&noopE2ELifecycleProvider{},
 		m,
-		100,
-		0, // no grace period — alerts fire immediately after timeout
+		service.HeartbeatTrackerConfig{
+			StatusUpdateBufSize: 100,
+			GracePeriod:         0, // no grace period — alerts fire immediately after timeout
+		},
 	)
 	defer tracker.Close()
 
