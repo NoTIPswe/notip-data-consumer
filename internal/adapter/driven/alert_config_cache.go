@@ -40,6 +40,9 @@ type AlertConfigCache struct {
 	defaultTimeoutMs int64
 	refreshInterval  time.Duration
 	maxRetries       int
+	initialBackoff   time.Duration
+	maxBackoff       time.Duration
+	wait             func(ctx context.Context, d time.Duration) error
 }
 
 // NewAlertConfigCache constructs an AlertConfigCache. Run must be called in a goroutine
@@ -50,6 +53,8 @@ func NewAlertConfigCache(
 	defaultTimeoutMs int64,
 	refreshInterval time.Duration,
 	maxRetries int,
+	initialBackoffMs int,
+	maxBackoffMs int,
 ) *AlertConfigCache {
 	c := &AlertConfigCache{
 		rrClient:         rrClient,
@@ -58,6 +63,18 @@ func NewAlertConfigCache(
 		defaultTimeoutMs: defaultTimeoutMs,
 		refreshInterval:  refreshInterval,
 		maxRetries:       maxRetries,
+		initialBackoff:   time.Duration(initialBackoffMs) * time.Millisecond,
+		maxBackoff:       time.Duration(maxBackoffMs) * time.Millisecond,
+		wait: func(ctx context.Context, d time.Duration) error {
+			t := time.NewTimer(d)
+			defer t.Stop()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-t.C:
+				return nil
+			}
+		},
 	}
 	// Initialise with an empty snapshot so TimeoutFor never reads a nil pointer.
 	c.snapshot.Store(&alertConfigSnapshot{
@@ -100,6 +117,9 @@ func (c *AlertConfigCache) Run(ctx context.Context) {
 			if err := c.refresh(ctx); err != nil {
 				c.metrics.IncAlertCacheRefreshErrors()
 				c.logger.Error("alert config cache refresh failed", "err", err)
+			} else {
+				gw, t := c.snapshotCounts()
+				c.logger.Info("alert config cache refreshed", "gateway_configs", gw, "tenant_configs", t)
 			}
 		}
 	}
@@ -130,14 +150,26 @@ func (c *AlertConfigCache) refresh(ctx context.Context) error {
 	return nil
 }
 
-// fetchWithBackoff retries up to maxRetries times with exponential backoff (1s → 30s cap).
+// snapshotCounts returns the current gateway and tenant config counts for logging.
+func (c *AlertConfigCache) snapshotCounts() (int, int) {
+	snap := c.snapshot.Load()
+	return len(snap.byGateway), len(snap.byTenant)
+}
+
+// fetchWithBackoff retries up to maxRetries times with exponential backoff.
 // Increments the error metric on each failed attempt.
 func (c *AlertConfigCache) fetchWithBackoff(ctx context.Context) error {
-	delay := time.Second
+	delay := c.initialBackoff
 	var lastErr error
 
 	for attempt := 0; attempt < c.maxRetries; attempt++ {
 		if err := c.refresh(ctx); err == nil {
+			gw, t := c.snapshotCounts()
+			c.logger.Info("alert config cache loaded",
+				"attempt", attempt+1,
+				"gateway_configs", gw,
+				"tenant_configs", t,
+			)
 			return nil
 		} else {
 			lastErr = err
@@ -145,15 +177,13 @@ func (c *AlertConfigCache) fetchWithBackoff(ctx context.Context) error {
 			c.logger.Error("alert config cache initial fetch failed", "attempt", attempt+1, "err", err)
 		}
 
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(delay):
+		if err := c.wait(ctx, delay); err != nil {
+			return err
 		}
 
 		delay *= 2
-		if delay > 30*time.Second {
-			delay = 30 * time.Second
+		if delay > c.maxBackoff {
+			delay = c.maxBackoff
 		}
 	}
 

@@ -29,6 +29,32 @@ const (
 	telemetryFlushInterval = 500 * time.Millisecond
 )
 
+var (
+	loadConfig = config.Load
+	newMetrics = func() *metrics.Metrics {
+		return metrics.New(prometheus.DefaultRegisterer)
+	}
+	connectNATS = func(cfg *config.Config, m *metrics.Metrics) (*nats.Conn, error) {
+		return nats.Connect(cfg.NATSUrl,
+			nats.RootCAs(cfg.NATSTlsCa),
+			nats.ClientCert(cfg.NATSTlsCert, cfg.NATSTlsKey),
+			nats.Timeout(time.Duration(cfg.NATSConnectTimeoutSeconds)*time.Second),
+			nats.ReconnectHandler(func(_ *nats.Conn) {
+				m.IncNATSReconnects()
+				slog.Warn("nats reconnected")
+			}),
+		)
+	}
+	jetStreamFromConn = func(nc *nats.Conn) (nats.JetStreamContext, error) {
+		return nc.JetStream()
+	}
+	drainNATS = func(nc *nats.Conn) {
+		_ = nc.Drain()
+	}
+	parsePoolConfig   = pgxpool.ParseConfig
+	newPoolWithConfig = pgxpool.NewWithConfig
+)
+
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
 	if err := run(); err != nil {
@@ -39,7 +65,7 @@ func main() {
 
 func run() error {
 	// ── Step 1: Config ──────────────────────────────────────────────────────────
-	cfg, err := config.Load()
+	cfg, err := loadConfig()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
@@ -50,29 +76,23 @@ func run() error {
 	}
 
 	// ── Metrics ─────────────────────────────────────────────────────────────────
-	m := metrics.New(prometheus.DefaultRegisterer)
+	m := newMetrics()
 
 	// ── Step 2: NATS ────────────────────────────────────────────────────────────
-	nc, err := nats.Connect(cfg.NATSUrl,
-		nats.RootCAs(cfg.NATSTlsCa),
-		nats.ClientCert(cfg.NATSTlsCert, cfg.NATSTlsKey),
-		nats.Timeout(time.Duration(cfg.NATSConnectTimeoutSeconds)*time.Second),
-		nats.ReconnectHandler(func(_ *nats.Conn) {
-			m.IncNATSReconnects()
-		}),
-	)
+	nc, err := connectNATS(cfg, m)
 	if err != nil {
 		return fmt.Errorf("nats connect: %w", err)
 	}
-	defer func() { _ = nc.Drain() }() // drains in-flight messages before close
+	defer drainNATS(nc)
+	slog.Info("nats connected", "url", cfg.NATSUrl)
 
-	js, err := nc.JetStream()
+	js, err := jetStreamFromConn(nc)
 	if err != nil {
 		return fmt.Errorf("nats jetstream context: %w", err)
 	}
 
 	// ── Step 3: Database pool ───────────────────────────────────────────────────
-	poolCfg, err := pgxpool.ParseConfig(dsn)
+	poolCfg, err := parsePoolConfig(dsn)
 	if err != nil {
 		return fmt.Errorf("parse pool config: %w", err)
 	}
@@ -83,7 +103,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
-	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
+	pool, err := newPoolWithConfig(ctx, poolCfg)
 	if err != nil {
 		return fmt.Errorf("create pgxpool: %w", err)
 	}
@@ -92,6 +112,7 @@ func run() error {
 	if err := migrations.Apply(ctx, pool); err != nil {
 		return fmt.Errorf("apply database migrations: %w", err)
 	}
+	slog.Info("database ready", "max_conns", cfg.DBMaxConns, "min_conns", cfg.DBMinConns)
 
 	// ── Build adapters ──────────────────────────────────────────────────────────
 	rrClient := driven.NewNATSRRClient(nc, natsRRTimeout)
@@ -101,6 +122,8 @@ func run() error {
 		cfg.AlertConfigDefaultTimeoutMs,
 		time.Duration(cfg.AlertConfigRefreshMs)*time.Millisecond,
 		cfg.AlertConfigMaxRetries,
+		cfg.AlertConfigInitialBackoffMs,
+		cfg.AlertConfigMaxBackoffMs,
 	)
 
 	alertPublisher := driven.NewNATSAlertPublisher(js, m)
@@ -165,10 +188,23 @@ func run() error {
 		}
 	}()
 
+	slog.Info("service started",
+		"heartbeat_tick_ms", cfg.HeartbeatTickMs,
+		"grace_period_ms", cfg.HeartbeatGracePeriodMs,
+		"alert_config_refresh_ms", cfg.AlertConfigRefreshMs,
+		"alert_config_default_timeout_ms", cfg.AlertConfigDefaultTimeoutMs,
+		"alert_config_initial_backoff_ms", cfg.AlertConfigInitialBackoffMs,
+		"alert_config_max_backoff_ms", cfg.AlertConfigMaxBackoffMs,
+		"batch_size", telemetryBatchSize,
+		"flush_interval_ms", telemetryFlushInterval.Milliseconds(),
+		"metrics_addr", cfg.MetricsAddr,
+	)
+
 	// ── Step 8: TelemetryConsumer — blocks until ctx is cancelled ───────────────
 	if err := telemetryConsumer.Run(ctx); err != nil {
 		return fmt.Errorf("telemetry consumer: %w", err)
 	}
 
+	slog.Info("shutting down")
 	return nil
 }

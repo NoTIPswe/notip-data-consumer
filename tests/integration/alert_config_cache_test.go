@@ -54,6 +54,8 @@ func TestAlertConfigCacheIntegrationInitialFetchPopulatesCache(t *testing.T) {
 		99999, // default — should NOT be returned when config exists
 		1*time.Hour,
 		3,
+		1000,
+		30000,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -107,6 +109,8 @@ func TestAlertConfigCacheIntegrationRefreshUpdatesCache(t *testing.T) {
 		99999,
 		200*time.Millisecond, // refresh every 200ms
 		3,
+		1000,
+		30000,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -142,6 +146,8 @@ func TestAlertConfigCacheIntegrationFallbackToDefaultOnNoResponder(t *testing.T)
 		77777,
 		1*time.Hour,
 		2, // only 2 retries to keep the test fast
+		1000,
+		30000,
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())

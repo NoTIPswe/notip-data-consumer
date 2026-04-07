@@ -35,8 +35,34 @@ func gwID(s string) *string { return &s }
 
 func newCache(fetcher alertConfigFetcher, defaultMs int64) (*AlertConfigCache, *stubCacheMetrics) {
 	m := &stubCacheMetrics{}
-	c := NewAlertConfigCache(fetcher, m, defaultMs, time.Hour, 3)
+	c := NewAlertConfigCache(fetcher, m, defaultMs, time.Hour, 3, 1000, 30000)
 	return c, m
+}
+
+func TestNewAlertConfigCacheSetsBackoffFromMilliseconds(t *testing.T) {
+	cache := NewAlertConfigCache(&stubFetcher{}, &stubCacheMetrics{}, 60000, time.Hour, 3, 25, 250)
+
+	assert.Equal(t, 25*time.Millisecond, cache.initialBackoff)
+	assert.Equal(t, 250*time.Millisecond, cache.maxBackoff)
+}
+
+func TestNewAlertConfigCacheWaitReturnsOnTimer(t *testing.T) {
+	cache, _ := newCache(&stubFetcher{}, 60000)
+
+	err := cache.wait(context.Background(), time.Millisecond)
+
+	require.NoError(t, err)
+}
+
+func TestNewAlertConfigCacheWaitReturnsOnContextCancel(t *testing.T) {
+	cache, _ := newCache(&stubFetcher{}, 60000)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := cache.wait(ctx, time.Second)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
 }
 
 // ─── TimeoutFor ───────────────────────────────────────────────────────────────
@@ -151,7 +177,7 @@ func TestAlertConfigCacheRunRefreshesOnTick(t *testing.T) {
 	}}
 	m := &stubCacheMetrics{}
 	// Very short refresh interval so the ticker fires quickly.
-	cache := NewAlertConfigCache(fetcher, m, 60000, 20*time.Millisecond, 1)
+	cache := NewAlertConfigCache(fetcher, m, 60000, 20*time.Millisecond, 1, 1000, 30000)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -196,7 +222,7 @@ func TestAlertConfigCacheFetchWithBackoffStopsAfterMaxRetries(t *testing.T) {
 	fetcher := &stubFetcher{err: errors.New("permanent error")}
 	m := &stubCacheMetrics{}
 	// maxRetries=2, tiny interval so the test doesn't sleep.
-	cache := NewAlertConfigCache(fetcher, m, 60000, time.Hour, 2)
+	cache := NewAlertConfigCache(fetcher, m, 60000, time.Hour, 2, 1000, 30000)
 
 	// Override delay by cancelling context immediately after first failure.
 	// We use a very short first delay: inject a context that cancels after 10ms.
@@ -214,7 +240,7 @@ func TestAlertConfigCacheFetchWithBackoffSucceedsOnFirstAttempt(t *testing.T) {
 		{TenantID: "t1", TimeoutMs: 5000},
 	}}
 	m := &stubCacheMetrics{}
-	cache := NewAlertConfigCache(fetcher, m, 60000, time.Hour, 3)
+	cache := NewAlertConfigCache(fetcher, m, 60000, time.Hour, 3, 1000, 30000)
 
 	err := cache.fetchWithBackoff(context.Background())
 
@@ -222,4 +248,57 @@ func TestAlertConfigCacheFetchWithBackoffSucceedsOnFirstAttempt(t *testing.T) {
 	assert.Equal(t, int64(5000), cache.TimeoutFor("t1", "any"),
 		"a successful fetch must populate the snapshot")
 	assert.Equal(t, 0, m.refreshErrors, "no error counter incremented on success")
+}
+
+func TestAlertConfigCacheFetchWithBackoffExhaustsRetries(t *testing.T) {
+	fetcher := &stubFetcher{err: errors.New("still failing")}
+	m := &stubCacheMetrics{}
+	cache := NewAlertConfigCache(fetcher, m, 60000, time.Hour, 3, 1000, 30000)
+	cache.initialBackoff = time.Millisecond
+	cache.maxBackoff = 2 * time.Millisecond
+	cache.wait = func(context.Context, time.Duration) error { return nil }
+
+	err := cache.fetchWithBackoff(context.Background())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exhausted 3 retries")
+	assert.Contains(t, err.Error(), "still failing")
+	assert.Equal(t, 3, fetcher.calls)
+	assert.Equal(t, 3, m.refreshErrors)
+}
+
+func TestAlertConfigCacheFetchWithBackoffReturnsWaitError(t *testing.T) {
+	fetcher := &stubFetcher{err: errors.New("temporary failure")}
+	m := &stubCacheMetrics{}
+	cache := NewAlertConfigCache(fetcher, m, 60000, time.Hour, 2, 1000, 30000)
+	cache.initialBackoff = time.Millisecond
+	cache.wait = func(context.Context, time.Duration) error { return errors.New("wait interrupted") }
+
+	err := cache.fetchWithBackoff(context.Background())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "wait interrupted")
+	assert.Equal(t, 1, fetcher.calls)
+	assert.Equal(t, 1, m.refreshErrors)
+}
+
+func TestAlertConfigCacheRunIncrementsMetricOnRefreshError(t *testing.T) {
+	fetcher := &stubFetcher{err: errors.New("refresh error")}
+	m := &stubCacheMetrics{}
+	cache := NewAlertConfigCache(fetcher, m, 60000, 10*time.Millisecond, 0, 1000, 30000)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		cache.Run(ctx)
+		close(done)
+	}()
+
+	<-done
+
+	assert.GreaterOrEqual(t, fetcher.calls, 1)
+	assert.GreaterOrEqual(t, m.refreshErrors, 1,
+		"Run must increment refresh error metric on failed periodic refresh")
 }

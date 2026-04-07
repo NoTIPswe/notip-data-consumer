@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -54,6 +55,7 @@ type NATSTelemetryConsumer struct {
 	handler     port.TelemetryMessageHandler
 	writer      port.TelemetryWriter
 	metrics     telemetryConsumerMetrics
+	logger      *slog.Logger
 	durableName string
 	batchSize   int
 	flushEvery  time.Duration
@@ -73,6 +75,7 @@ func NewNATSTelemetryConsumer(
 		handler:     handler,
 		writer:      writer,
 		metrics:     metrics,
+		logger:      slog.Default(),
 		durableName: durableName,
 		batchSize:   batchSize,
 		flushEvery:  flushEvery,
@@ -97,6 +100,13 @@ func (c *NATSTelemetryConsumer) Run(ctx context.Context) error {
 		return fmt.Errorf("subscribe %s: %w", subjectTelemetry, err)
 	}
 	defer func() { _ = sub.Unsubscribe() }()
+
+	c.logger.Info("telemetry consumer started",
+		"subject", subjectTelemetry,
+		"durable", c.durableName,
+		"batch_size", c.batchSize,
+		"flush_interval", c.flushEvery.String(),
+	)
 
 	c.flushLoop(ctx, pending)
 	return nil
@@ -165,12 +175,20 @@ func (c *NATSTelemetryConsumer) writeBatch(ctx context.Context, batch []pendingM
 	if len(rows) > 0 {
 		start := time.Now()
 		writeErr = c.writer.WriteBatch(ctx, rows)
-		c.metrics.ObserveWriteLatency(time.Since(start))
+		elapsed := time.Since(start)
+		c.metrics.ObserveWriteLatency(elapsed)
+
+		if writeErr != nil {
+			c.logger.Error("batch write failed", "rows", len(rows), "err", writeErr)
+		} else {
+			c.logger.Info("batch flushed", "rows", len(rows), "elapsed", elapsed.String())
+		}
 	}
 
 	for _, pm := range batch {
 		if pm.err != nil {
-			// Permanent parse error term so NATS never redelivers.
+			// Permanent parse error: Term so NATS never redelivers.
+			c.logger.Warn("message permanently rejected")
 			_ = pm.msg.Term()
 			continue
 		}

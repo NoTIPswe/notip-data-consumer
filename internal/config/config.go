@@ -40,6 +40,8 @@ type Config struct {
 	AlertConfigRefreshMs        int
 	AlertConfigDefaultTimeoutMs int64
 	AlertConfigMaxRetries       int
+	AlertConfigInitialBackoffMs int
+	AlertConfigMaxBackoffMs     int
 	MetricsAddr                 string
 }
 
@@ -58,6 +60,8 @@ func Load() (*Config, error) {
 		AlertConfigRefreshMs:        300000,
 		AlertConfigDefaultTimeoutMs: 60000,
 		AlertConfigMaxRetries:       10,
+		AlertConfigInitialBackoffMs: 1000,
+		AlertConfigMaxBackoffMs:     30000,
 		MetricsAddr:                 envOrDefault("METRICS_ADDR", ":9090"),
 	}
 
@@ -87,6 +91,8 @@ func Load() (*Config, error) {
 	l.optInt("ALERT_CONFIG_REFRESH_MS", &cfg.AlertConfigRefreshMs)
 	l.optInt64("ALERT_CONFIG_DEFAULT_TIMEOUT_MS", &cfg.AlertConfigDefaultTimeoutMs)
 	l.optInt("ALERT_CONFIG_MAX_RETRIES", &cfg.AlertConfigMaxRetries)
+	l.optInt("ALERT_CONFIG_INITIAL_BACKOFF_MS", &cfg.AlertConfigInitialBackoffMs)
+	l.optInt("ALERT_CONFIG_MAX_BACKOFF_MS", &cfg.AlertConfigMaxBackoffMs)
 
 	if l.err == nil {
 		if err := validateDBSSLMode(cfg.DBSSLMode); err != nil {

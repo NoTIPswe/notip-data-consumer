@@ -3,6 +3,7 @@ package driving
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/nats-io/nats.go"
@@ -13,7 +14,7 @@ import (
 // JetStream subject where it receives news.
 const subjectDecommissioned = "gateway.decommissioned.>"
 
-// interface over nats.JetstreamContext for subsriptions.
+// interface over nats.JetstreamContext for subscriptions.
 type natsJSSubscriber interface {
 	Subscribe(subj string, cb nats.MsgHandler, opts ...nats.SubOpt) (*nats.Subscription, error)
 }
@@ -22,10 +23,11 @@ type natsJSSubscriber interface {
 type NATSDecommissionConsumer struct {
 	js      natsJSSubscriber
 	handler port.DecommissionEventHandler
+	logger  *slog.Logger
 }
 
 func NewNATSDecommissionConsumer(js natsJSSubscriber, handler port.DecommissionEventHandler) *NATSDecommissionConsumer {
-	return &NATSDecommissionConsumer{js: js, handler: handler}
+	return &NATSDecommissionConsumer{js: js, handler: handler, logger: slog.Default()}
 }
 
 // Run subscribes to the decommission subject and blocks until ctx is cancelled.
@@ -43,10 +45,12 @@ func (c *NATSDecommissionConsumer) Run(ctx context.Context) error {
 func (c *NATSDecommissionConsumer) handleMsg(msg *nats.Msg) {
 	tenantID, gatewayID, err := c.extractIDs(msg.Subject)
 	if err != nil {
-		_ = msg.Term() // not re-delivers the message
+		c.logger.Warn("decommission message has invalid subject format")
+		_ = msg.Term()
 		return
 	}
 	c.handler.HandleDecommission(tenantID, gatewayID)
+	c.logger.Info("gateway decommission processed")
 	_ = msg.Ack()
 }
 

@@ -14,6 +14,7 @@ const (
 	testCertCAPath  = "/certs/ca.crt"
 	testDBHost      = "measures-db"
 	testDBSSLVerify = "verify-full"
+	testInvalidNum  = "not-a-number"
 )
 
 // Set all the required env varibles.
@@ -49,6 +50,8 @@ func TestLoadDefaults(t *testing.T) {
 	assert.Equal(t, 300000, cfg.AlertConfigRefreshMs)
 	assert.Equal(t, int64(60000), cfg.AlertConfigDefaultTimeoutMs)
 	assert.Equal(t, 10, cfg.AlertConfigMaxRetries)
+	assert.Equal(t, 1000, cfg.AlertConfigInitialBackoffMs)
+	assert.Equal(t, 30000, cfg.AlertConfigMaxBackoffMs)
 	assert.Equal(t, ":9090", cfg.MetricsAddr)
 }
 
@@ -108,11 +111,49 @@ func TestLoadOptionalOverrides(t *testing.T) {
 
 func TestLoadInvalidIntegerField(t *testing.T) {
 	setRequiredEnv(t)
-	t.Setenv("HEARTBEAT_TICK_MS", "not-a-number")
+	t.Setenv("HEARTBEAT_TICK_MS", testInvalidNum)
 
 	_, err := Load()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "HEARTBEAT_TICK_MS")
+}
+
+func TestLoadInvalidAlertConfigDefaultTimeoutMs(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("ALERT_CONFIG_DEFAULT_TIMEOUT_MS", testInvalidNum)
+
+	_, err := Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ALERT_CONFIG_DEFAULT_TIMEOUT_MS")
+}
+
+func TestLoadInvalidAlertConfigInitialBackoffMs(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("ALERT_CONFIG_INITIAL_BACKOFF_MS", testInvalidNum)
+
+	_, err := Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ALERT_CONFIG_INITIAL_BACKOFF_MS")
+}
+
+func TestLoadInvalidAlertConfigMaxBackoffMs(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("ALERT_CONFIG_MAX_BACKOFF_MS", testInvalidNum)
+
+	_, err := Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ALERT_CONFIG_MAX_BACKOFF_MS")
+}
+
+func TestLoadFirstErrorShortCircuitsOptionalParsing(t *testing.T) {
+	setRequiredEnv(t)
+	t.Setenv("NATS_URL", "")
+	t.Setenv("ALERT_CONFIG_DEFAULT_TIMEOUT_MS", testInvalidNum)
+
+	_, err := Load()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "NATS_URL")
+	assert.NotContains(t, err.Error(), "ALERT_CONFIG_DEFAULT_TIMEOUT_MS")
 }
 
 func TestLoadInvalidDBSSLMode(t *testing.T) {
@@ -236,7 +277,7 @@ func TestParseInt64ParsesValue(t *testing.T) {
 func TestParseInt64InvalidValueReturnsError(t *testing.T) {
 	v := int64(42)
 
-	err := parseInt64("not-a-number", &v)
+	err := parseInt64(testInvalidNum, &v)
 
 	require.Error(t, err)
 	assert.Equal(t, int64(42), v)

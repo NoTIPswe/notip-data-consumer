@@ -19,10 +19,19 @@ type SQLExecutor interface {
 //go:embed *.sql
 var embeddedSQL embed.FS
 
+var (
+	readEmbeddedDir = func() ([]fs.DirEntry, error) {
+		return fs.ReadDir(embeddedSQL, ".")
+	}
+	readEmbeddedFile = func(name string) ([]byte, error) {
+		return embeddedSQL.ReadFile(name)
+	}
+)
+
 // Apply executes embedded .sql migrations in lexical order.
 // SQL scripts are expected to be idempotent so startup can safely re-run them.
 func Apply(ctx context.Context, db SQLExecutor) error {
-	entries, err := fs.ReadDir(embeddedSQL, ".")
+	entries, err := readEmbeddedDir()
 	if err != nil {
 		return fmt.Errorf("list embedded migrations: %w", err)
 	}
@@ -38,7 +47,7 @@ func Apply(ctx context.Context, db SQLExecutor) error {
 	sort.Strings(files)
 
 	for _, name := range files {
-		statement, err := embeddedSQL.ReadFile(name)
+		statement, err := readEmbeddedFile(name)
 		if err != nil {
 			return fmt.Errorf("read embedded migration %s: %w", name, err)
 		}
