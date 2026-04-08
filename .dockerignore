@@ -16,7 +16,6 @@ sonar-project.properties
 Makefile
 scripts/
 api-contracts/
-migrations/
 
 # Node (semantic-release only)
 node_modules/
