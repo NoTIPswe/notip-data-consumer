@@ -1,3 +1,20 @@
+# [1.2.0](https://github.com/NoTIPswe/notip-data-consumer/compare/v1.1.0...v1.2.0) (2026-04-08)
+
+
+### Bug Fixes
+
+* add logging for alert config cache refresh and fetch errors ([5deb16d](https://github.com/NoTIPswe/notip-data-consumer/commit/5deb16d9fc096d6a8199e0412051618ee676af82))
+* improve database SSL configuration handling and tests ([95421f8](https://github.com/NoTIPswe/notip-data-consumer/commit/95421f8f7f7a4b24e216b4039552339e97a39a4e))
+* improve error handling and output in scripts ([1e68c6d](https://github.com/NoTIPswe/notip-data-consumer/commit/1e68c6d9af3a2590cc6109354375bbe7488b3a66))
+* migration and DSSL key ([7b34d24](https://github.com/NoTIPswe/notip-data-consumer/commit/7b34d24564e88f9461e0028eed3b8f05ad844aea))
+* migrations folder in dockerignore ([7968c19](https://github.com/NoTIPswe/notip-data-consumer/commit/7968c1952b0b86a25f00b7f2ee3143686de06af7))
+
+
+### Features
+
+* add DB_SSL_ROOT_CERT support for SSL verification in database configuration ([ba01e0a](https://github.com/NoTIPswe/notip-data-consumer/commit/ba01e0aa29b78d0d08e9917fb9dd6394ac862844))
+* enhance AlertConfigCache with exponential backoff and logging ([7f95932](https://github.com/NoTIPswe/notip-data-consumer/commit/7f95932d200de8c37d68a2ee5bfd3a2dee860a41))
+
 # [1.1.0](https://github.com/NoTIPswe/notip-data-consumer/compare/v1.0.1...v1.1.0) (2026-04-03)
 
 
