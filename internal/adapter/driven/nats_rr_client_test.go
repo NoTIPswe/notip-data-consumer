@@ -211,6 +211,34 @@ func TestNATSRRClientGetGatewayLifecycleMalformedJSON(t *testing.T) {
 	assert.Contains(t, err.Error(), "unmarshal")
 }
 
+func TestNATSRRClientGetGatewayLifecycleInvalidState(t *testing.T) {
+	resp := model.GatewayLifecycleResponse{GatewayID: "gw-1", State: model.GatewayLifecycleState("broken")}
+	body, _ := json.Marshal(resp)
+
+	mock := &mockRequester{resp: &nats.Msg{Data: body}}
+	client := newRRClient(mock)
+
+	state, err := client.GetGatewayLifecycle(context.Background(), tenantID, "gw-1")
+
+	require.Error(t, err)
+	assert.Equal(t, model.LifecycleUnknown, state)
+	assert.Contains(t, err.Error(), "invalid gateway lifecycle state")
+}
+
+func TestNATSRRClientGetGatewayLifecycleGatewayIDMismatch(t *testing.T) {
+	resp := model.GatewayLifecycleResponse{GatewayID: "gw-other", State: model.LifecycleOnline}
+	body, _ := json.Marshal(resp)
+
+	mock := &mockRequester{resp: &nats.Msg{Data: body}}
+	client := newRRClient(mock)
+
+	state, err := client.GetGatewayLifecycle(context.Background(), tenantID, "gw-1")
+
+	require.Error(t, err)
+	assert.Equal(t, model.LifecycleUnknown, state)
+	assert.Contains(t, err.Error(), "gateway_id mismatch")
+}
+
 func TestNATSRRClientFetchAlertConfigsRetriesThenSucceeds(t *testing.T) {
 	mock := &mockRequester{
 		errs: []error{errors.New("timeout 1"), errors.New("timeout 2"), nil},

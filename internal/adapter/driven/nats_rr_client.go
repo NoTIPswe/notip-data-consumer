@@ -117,8 +117,35 @@ func (c *NATSRRClient) GetGatewayLifecycle(ctx context.Context, tenantID, gatewa
 	if err := json.Unmarshal(resp.Data, &result); err != nil {
 		return model.LifecycleUnknown, fmt.Errorf("unmarshal gateway lifecycle response: %w", err)
 	}
+	if err := validateGatewayLifecycleResponse(result, gatewayID); err != nil {
+		return model.LifecycleUnknown, err
+	}
 
 	return result.State, nil
+}
+
+func validateGatewayLifecycleResponse(result model.GatewayLifecycleResponse, expectedGatewayID string) error {
+	if result.GatewayID == "" {
+		return fmt.Errorf("gateway lifecycle response missing gateway_id")
+	}
+
+	if expectedGatewayID != "" && result.GatewayID != expectedGatewayID {
+		return fmt.Errorf(
+			"gateway lifecycle response gateway_id mismatch: expected %s got %s",
+			expectedGatewayID,
+			result.GatewayID,
+		)
+	}
+
+	switch result.State {
+	case model.LifecycleOnline,
+		model.LifecycleOffline,
+		model.LifecyclePaused,
+		model.LifecycleProvisioning:
+		return nil
+	default:
+		return fmt.Errorf("invalid gateway lifecycle state: %q", result.State)
+	}
 }
 
 // requestWithRetry applies RR policy: timeout per attempt, retry up to maxRetries times

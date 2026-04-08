@@ -19,6 +19,7 @@ import (
 const (
 	expectedTimeoutError = "expected timeout error when no responder is available"
 	testGatewayIDRR      = "gw-lc-test"
+	testLifecycleTenant  = "tenant-lc"
 )
 
 // TestNATSRRClientIntegrationFetchAlertConfigs sets up a mock responder on the
@@ -141,14 +142,14 @@ func TestNATSRRClientIntegrationGetGatewayLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sub.Unsubscribe() })
 
-	state, err := client.GetGatewayLifecycle(context.Background(), "tenant-lc", testGatewayIDRR)
+	state, err := client.GetGatewayLifecycle(context.Background(), testLifecycleTenant, testGatewayIDRR)
 	require.NoError(t, err)
 	assert.Equal(t, model.LifecyclePaused, state)
 
 	select {
 	case got := <-received:
 		assert.Equal(t, testGatewayIDRR, got.GatewayID)
-		assert.Equal(t, "tenant-lc", got.TenantID)
+		assert.Equal(t, testLifecycleTenant, got.TenantID)
 	case <-time.After(5 * time.Second):
 		t.Fatal("mock responder never received the lifecycle request")
 	}
@@ -162,4 +163,21 @@ func TestNATSRRClientIntegrationGetGatewayLifecycleTimeout(t *testing.T) {
 
 	_, err := client.GetGatewayLifecycle(context.Background(), "tenant-timeout", "gw-timeout")
 	require.Error(t, err, expectedTimeoutError)
+}
+
+// TestNATSRRClientIntegrationGetGatewayLifecycleRejectsInvalidResponse verifies
+// that malformed lifecycle responses are treated as errors and mapped to unknown.
+func TestNATSRRClientIntegrationGetGatewayLifecycleRejectsInvalidResponse(t *testing.T) {
+	nc := connectNATSWithMTLS(t)
+	client := driven.NewNATSRRClient(nc, 5*time.Second)
+
+	sub, err := nc.Subscribe("internal.mgmt.gateway.get-status", func(msg *nats.Msg) {
+		_ = msg.Respond([]byte(`{"gateway_id":"gw-lc-test","state":"invalid-state"}`))
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sub.Unsubscribe() })
+
+	state, err := client.GetGatewayLifecycle(context.Background(), testLifecycleTenant, "gw-lc-test")
+	require.Error(t, err)
+	assert.Equal(t, model.LifecycleUnknown, state)
 }
