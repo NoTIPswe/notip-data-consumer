@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/NoTIPswe/notip-data-consumer/compare/v1.2.0...v1.3.0) (2026-04-08)
+
+
+### Features
+
+* add validation for gateway lifecycle response and enhance tests ([8298600](https://github.com/NoTIPswe/notip-data-consumer/commit/82986001f6aa45dc23c9809a15b92d7cbb69ff6e))
+
 # [1.2.0](https://github.com/NoTIPswe/notip-data-consumer/compare/v1.1.0...v1.2.0) (2026-04-08)
 
 
