@@ -47,6 +47,7 @@ type HeartbeatTracker struct {
 	configProvider    port.AlertConfigProvider
 	lifecycleProvider port.GatewayLifecycleProvider
 	metrics           HeartbeatTrackerMetrics
+	logger            *slog.Logger
 
 	startTime   time.Time
 	gracePeriod time.Duration
@@ -84,6 +85,7 @@ func NewHeartbeatTracker(
 		configProvider:    configProvider,
 		lifecycleProvider: lifecycleProvider,
 		metrics:           metrics,
+		logger:            slog.Default(),
 		startTime:         clock.Now(),
 		gracePeriod:       cfg.GracePeriod,
 		beats:             make(map[gatewayKey]*heartbeatEntry),
@@ -105,7 +107,7 @@ func (t *HeartbeatTracker) Close() {
 
 // dispatchWorker runs in a background goroutine and serialises all UpdateStatus
 // RR calls, keeping Tick and HandleTelemetry non-blocking.
-// Errors are counted by the NATSGatewayStatusUpdater adapter before bubbling up.
+// Errors are counted and logged by the NATSGatewayStatusUpdater adapter.
 func (t *HeartbeatTracker) dispatchWorker() {
 	defer close(t.done)
 	for job := range t.dispatchCh {
@@ -133,6 +135,7 @@ func (t *HeartbeatTracker) HandleTelemetry(ctx context.Context, tenantID string,
 			knownStatus: model.Online,
 		}
 		t.metrics.SetHeartbeatMapSize(float64(len(t.beats)))
+		t.logger.Info("gateway registered", "tracked", len(t.beats))
 		t.dispatchStatusUpdate(model.GatewayStatusUpdate{
 			GatewayID:  env.GatewayID,
 			Status:     model.Online,
@@ -145,6 +148,7 @@ func (t *HeartbeatTracker) HandleTelemetry(ctx context.Context, tenantID string,
 
 	if entry.knownStatus == model.Offline {
 		entry.knownStatus = model.Online
+		t.logger.Info("gateway recovered", "tracked", len(t.beats))
 		t.dispatchStatusUpdate(model.GatewayStatusUpdate{
 			GatewayID:  env.GatewayID,
 			Status:     model.Online,
@@ -164,7 +168,7 @@ func (t *HeartbeatTracker) HandleDecommission(tenantID, gatewayID string) {
 	t.metrics.SetHeartbeatMapSize(float64(len(t.beats)))
 }
 
-// Tick checks all tracked gateways for liveness
+// Tick checks all tracked gateways for liveness.
 // Uses a two-phase approach: snapshot under RLock to minimise contention, then
 // performs I/O outside the lock, and re-acquires WLock only to update state.
 func (t *HeartbeatTracker) Tick(ctx context.Context) {
@@ -205,7 +209,7 @@ func (t *HeartbeatTracker) Tick(ctx context.Context) {
 			// Fail-open: proceed with alert to avoid missing real offline events.
 			// The adapter has already incremented notip_consumer_lifecycle_query_errors_total.
 			// Monitor that counter for sustained failures indicating management-api is unreachable.
-			slog.Warn("lifecycle query failed, proceeding with alert (fail-open)",
+			t.logger.Warn("lifecycle query failed, proceeding with alert (fail-open)",
 				"tenantID", entry.tenantID,
 				"gatewayID", entry.gatewayID,
 				"err", err,
@@ -247,5 +251,6 @@ func (t *HeartbeatTracker) dispatchStatusUpdate(update model.GatewayStatusUpdate
 	case t.dispatchCh <- statusUpdateJob{update: update}:
 	default:
 		t.metrics.IncStatusUpdateDropped()
+		t.logger.Warn("status update dropped: dispatch channel full")
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/NoTIPswe/notip-data-consumer/internal/domain/model"
 	"github.com/nats-io/nats.go"
@@ -26,18 +27,19 @@ type alertPublisherMetrics interface {
 type NATSAlertPublisher struct {
 	js      natsJSPublisher
 	metrics alertPublisherMetrics
+	logger  *slog.Logger
 }
 
 // constructor of NATSAlertPublisher.
 // accepts natsJSPublisher so production code passes nats.JetStreamContext.
 // test can be lightweight stubs without a live NATS server.
 func NewNATSAlertPublisher(js natsJSPublisher, metrics alertPublisherMetrics) *NATSAlertPublisher {
-	return &NATSAlertPublisher{js: js, metrics: metrics}
+	return &NATSAlertPublisher{js: js, metrics: metrics, logger: slog.Default()}
 }
 
 // serialise payload to JSON and publish it to alert.gw_offline.{tenantID}
-// context is accepted for interface compiance but not threaded into js.Publish
-// synchronous Publish API does not support per-call contex cancellation.
+// context is accepted for interface compliance but not threaded into js.Publish
+// synchronous Publish API does not support per-call context cancellation.
 func (p *NATSAlertPublisher) Publish(_ context.Context, tenantID string, payload model.AlertPayload) error {
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -47,9 +49,11 @@ func (p *NATSAlertPublisher) Publish(_ context.Context, tenantID string, payload
 	subject := fmt.Sprintf("alert.gw_offline.%s", tenantID)
 	if _, err := p.js.Publish(subject, data); err != nil {
 		p.metrics.IncAlertPublishErrors()
+		p.logger.Error("offline alert publish failed", "err", err)
 		return fmt.Errorf("nats publish %s: %w", subject, err)
 	}
 
-	p.metrics.IncAlertsPublished() // increment the number of alerts published
+	p.metrics.IncAlertsPublished()
+	p.logger.Info("offline alert published")
 	return nil
 }

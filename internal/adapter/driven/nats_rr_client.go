@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -29,10 +30,12 @@ type natsRequester interface {
 // Shared infrastructure helper used by AlertConfigCache and NATSGatewayStatusUpdater.
 type NATSRRClient struct {
 	nc         natsRequester
+	logger     *slog.Logger
 	timeout    time.Duration
 	maxRetries int
 	backoff    []time.Duration
-	sleep      func(time.Duration)
+	// sleep blocks for d, honouring ctx cancellation. Returns ctx.Err() if cancelled.
+	sleep func(ctx context.Context, d time.Duration) error
 }
 
 // NewNATSRRClient constructs a NATSRRClient. timeout is applied per-request on top of
@@ -40,10 +43,20 @@ type NATSRRClient struct {
 func NewNATSRRClient(nc *nats.Conn, timeout time.Duration) *NATSRRClient {
 	return &NATSRRClient{
 		nc:         nc,
+		logger:     slog.Default(),
 		timeout:    timeout,
 		maxRetries: 3,
 		backoff:    []time.Duration{time.Second, 2 * time.Second, 4 * time.Second},
-		sleep:      time.Sleep,
+		sleep: func(ctx context.Context, d time.Duration) error {
+			t := time.NewTimer(d)
+			defer t.Stop()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-t.C:
+				return nil
+			}
+		},
 	}
 }
 
@@ -108,8 +121,8 @@ func (c *NATSRRClient) GetGatewayLifecycle(ctx context.Context, tenantID, gatewa
 	return result.State, nil
 }
 
-// requestWithRetry applies AsyncAPI RR policy: timeout 5s per attempt, retry 3x with
-// exponential backoff 1s/2s/4s (configurable via fields for tests).
+// requestWithRetry applies RR policy: timeout per attempt, retry up to maxRetries times
+// with exponential backoff. The backoff sleep is context-cancellable so shutdown is clean.
 func (c *NATSRRClient) requestWithRetry(ctx context.Context, subject string, body []byte) (*nats.Msg, error) {
 	var errs []string
 
@@ -127,12 +140,16 @@ func (c *NATSRRClient) requestWithRetry(ctx context.Context, subject string, bod
 		}
 
 		delay := c.backoff[min(attempt, len(c.backoff)-1)]
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
+		c.logger.Warn("nats rr request failed, retrying",
+			"subject", subject,
+			"attempt", attempt+1,
+			"delay", delay.String(),
+			"err", err,
+		)
+
+		if err := c.sleep(ctx, delay); err != nil {
+			return nil, err
 		}
-		c.sleep(delay)
 	}
 
 	return nil, fmt.Errorf("exhausted retries (%d): %s", c.maxRetries, strings.Join(errs, "; "))

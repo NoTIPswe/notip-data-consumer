@@ -31,9 +31,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -z "$REPO" ]] && { echo "Error: --repo is required"; exit 1; }
-[[ -z "$TAG"  ]] && { echo "Error: --tag is required";  exit 1; }
-[[ -z "$FILE" ]] && { echo "Error: --file is required"; exit 1; }
+[[ -z "$REPO" ]] && { echo "Error: --repo is required" >&2; exit 1; }
+[[ -z "$TAG"  ]] && { echo "Error: --tag is required" >&2;  exit 1; }
+[[ -z "$FILE" ]] && { echo "Error: --file is required" >&2; exit 1; }
 
 mkdir -p "$LOCAL_DIR"
 
@@ -47,12 +47,12 @@ gh api \
   > "${LOCAL_DIR}/${FILE}"
 
 if [[ ! -s "${LOCAL_DIR}/${FILE}" ]]; then
-  echo "Error: fetched file is empty (${LOCAL_DIR}/${FILE}). Check --repo/--tag/--file and repository access."
+  echo "Error: fetched file is empty (${LOCAL_DIR}/${FILE}). Check --repo/--tag/--file and repository access." >&2
   exit 1
 fi
 
 if ! grep -Eq '^[[:space:]]*asyncapi[[:space:]]*:|"asyncapi"[[:space:]]*:' "${LOCAL_DIR}/${FILE}"; then
-  echo "Error: fetched file does not look like an AsyncAPI spec (missing top-level 'asyncapi' field)."
+  echo "Error: fetched file does not look like an AsyncAPI spec (missing top-level 'asyncapi' field)." >&2
   exit 1
 fi
 echo "  Saved → ${LOCAL_DIR}/${FILE}"

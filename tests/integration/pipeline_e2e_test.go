@@ -90,7 +90,7 @@ func TestPipelineE2EFullDataFlow(t *testing.T) {
 	// ── Wire all production adapters (mirrors main.go) ───────────────────────
 	m := &noopE2EMetrics{}
 	rrClient := driven.NewNATSRRClient(nc, 5*time.Second)
-	alertCache := driven.NewAlertConfigCache(rrClient, m, 60000, 1*time.Hour, 3)
+	alertCache := driven.NewAlertConfigCache(rrClient, m, 60000, 1*time.Hour, 3, 1000, 30000)
 	alertPublisher := driven.NewNATSAlertPublisher(js, m)
 	statusSpy := &recordingStatusUpdater{}
 	clock := newControllableClock(time.Now().UTC())

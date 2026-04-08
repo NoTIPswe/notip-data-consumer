@@ -8,6 +8,13 @@ import (
 	"strings"
 )
 
+const (
+	dbSSLModeDisable    = "disable"
+	dbSSLModeRequire    = "require"
+	dbSSLModeVerifyCA   = "verify-ca"
+	dbSSLModeVerifyFull = "verify-full"
+)
+
 // Config holds all configuration loaded from environment variables at startup.
 type Config struct {
 	NATSUrl                   string
@@ -25,6 +32,7 @@ type Config struct {
 	DBMaxConns     int
 	DBMinConns     int
 	DBSSLMode      string
+	DBSSLRootCert  string
 
 	GatewayBufferSize           int
 	HeartbeatTickMs             int
@@ -32,6 +40,8 @@ type Config struct {
 	AlertConfigRefreshMs        int
 	AlertConfigDefaultTimeoutMs int64
 	AlertConfigMaxRetries       int
+	AlertConfigInitialBackoffMs int
+	AlertConfigMaxBackoffMs     int
 	MetricsAddr                 string
 }
 
@@ -43,13 +53,15 @@ func Load() (*Config, error) {
 		DBPort:                      5432,
 		DBMaxConns:                  10,
 		DBMinConns:                  2,
-		DBSSLMode:                   envOrDefault("DB_SSL_MODE", "require"),
+		DBSSLMode:                   envOrDefault("DB_SSL_MODE", dbSSLModeRequire),
 		GatewayBufferSize:           1000,
 		HeartbeatTickMs:             10000,
 		HeartbeatGracePeriodMs:      120000,
 		AlertConfigRefreshMs:        300000,
 		AlertConfigDefaultTimeoutMs: 60000,
 		AlertConfigMaxRetries:       10,
+		AlertConfigInitialBackoffMs: 1000,
+		AlertConfigMaxBackoffMs:     30000,
 		MetricsAddr:                 envOrDefault("METRICS_ADDR", ":9090"),
 	}
 
@@ -66,6 +78,7 @@ func Load() (*Config, error) {
 	l.require("DB_NAME", &cfg.DBName)
 	l.require("DB_USER", &cfg.DBUser)
 	l.require("DB_PASSWORD_FILE", &cfg.DBPasswordFile)
+	cfg.DBSSLRootCert = os.Getenv("DB_SSL_ROOT_CERT")
 
 	// Optional overrides
 	l.optInt("DB_PORT", &cfg.DBPort)
@@ -78,10 +91,15 @@ func Load() (*Config, error) {
 	l.optInt("ALERT_CONFIG_REFRESH_MS", &cfg.AlertConfigRefreshMs)
 	l.optInt64("ALERT_CONFIG_DEFAULT_TIMEOUT_MS", &cfg.AlertConfigDefaultTimeoutMs)
 	l.optInt("ALERT_CONFIG_MAX_RETRIES", &cfg.AlertConfigMaxRetries)
+	l.optInt("ALERT_CONFIG_INITIAL_BACKOFF_MS", &cfg.AlertConfigInitialBackoffMs)
+	l.optInt("ALERT_CONFIG_MAX_BACKOFF_MS", &cfg.AlertConfigMaxBackoffMs)
 
 	if l.err == nil {
 		if err := validateDBSSLMode(cfg.DBSSLMode); err != nil {
 			l.err = err
+		}
+		if requiresDBSSLRootCert(cfg.DBSSLMode) && cfg.DBSSLRootCert == "" {
+			l.err = fmt.Errorf("DB_SSL_ROOT_CERT is required when DB_SSL_MODE=%q", cfg.DBSSLMode)
 		}
 	}
 
@@ -127,6 +145,7 @@ func (l *loader) optInt64(key string, dst *int64) {
 
 // GetDatabaseDSN constructs the Postgres DSN by reading the password from the Docker secret file.
 // SSL mode is controlled by the DB_SSL_MODE environment variable (default: require).
+// DB_SSL_ROOT_CERT is appended to the DSN when provided.
 func (c *Config) GetDatabaseDSN() (string, error) {
 	passwordBytes, err := os.ReadFile(c.DBPasswordFile)
 	if err != nil {
@@ -134,17 +153,18 @@ func (c *Config) GetDatabaseDSN() (string, error) {
 	}
 	password := strings.TrimSpace(string(passwordBytes))
 
-	// Safely construct the URL to automatically escape special characters
-	dsnURL := url.URL{
+	dsnURL := &url.URL{
 		Scheme: "postgres",
 		User:   url.UserPassword(c.DBUser, password),
 		Host:   fmt.Sprintf("%s:%d", c.DBHost, c.DBPort),
 		Path:   c.DBName,
 	}
 
-	// Safely append query parameters
 	q := dsnURL.Query()
 	q.Set("sslmode", c.DBSSLMode)
+	if c.DBSSLRootCert != "" && requiresDBSSLRootCert(c.DBSSLMode) {
+		q.Set("sslrootcert", c.DBSSLRootCert)
+	}
 	dsnURL.RawQuery = q.Encode()
 
 	return dsnURL.String(), nil
@@ -183,9 +203,18 @@ func parseInt64(s string, dst *int64) error {
 
 func validateDBSSLMode(v string) error {
 	switch v {
-	case "disable", "require", "verify-ca", "verify-full":
+	case dbSSLModeDisable, dbSSLModeRequire, dbSSLModeVerifyCA, dbSSLModeVerifyFull:
 		return nil
 	default:
 		return fmt.Errorf("DB_SSL_MODE: invalid value %q", v)
+	}
+}
+
+func requiresDBSSLRootCert(mode string) bool {
+	switch mode {
+	case dbSSLModeVerifyCA, dbSSLModeVerifyFull:
+		return true
+	default:
+		return false
 	}
 }

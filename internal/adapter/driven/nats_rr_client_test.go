@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -47,18 +48,28 @@ func (m *mockRequester) RequestWithContext(_ context.Context, subj string, data 
 func newRRClient(r natsRequester) *NATSRRClient {
 	return &NATSRRClient{
 		nc:         r,
+		logger:     slog.Default(),
 		timeout:    5 * time.Second,
 		maxRetries: 3,
 		backoff:    []time.Duration{time.Second, 2 * time.Second, 4 * time.Second},
-		sleep:      func(time.Duration) { /* do nothing */ },
+		sleep:      func(context.Context, time.Duration) error { return nil },
 	}
 }
 
 func TestNewNATSRRClientSetsFields(t *testing.T) {
-	mock := &mockRequester{}
 	c := NewNATSRRClient(nil, 3*time.Second)
-	assert.NotNil(t, c)
-	_ = mock // satisfy linter
+	require.NotNil(t, c)
+	assert.Nil(t, c.nc)
+	assert.Equal(t, 3*time.Second, c.timeout)
+	assert.Equal(t, 3, c.maxRetries)
+	assert.Equal(t, []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}, c.backoff)
+	require.NotNil(t, c.sleep)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := c.sleep(ctx, time.Second)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
 }
 
 // ─── FetchAlertConfigs ────────────────────────────────────────────────────────
@@ -223,4 +234,16 @@ func TestNATSRRClientFetchAlertConfigsExhaustsRetries(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, 4, mock.calls) // 1 attempt + 3 retries
 	assert.Contains(t, err.Error(), "exhausted retries")
+}
+
+func TestNATSRRClientFetchAlertConfigsStopsWhenSleepIsInterrupted(t *testing.T) {
+	mock := &mockRequester{err: errors.New("timeout")}
+	client := newRRClient(mock)
+	client.sleep = func(_ context.Context, _ time.Duration) error { return context.Canceled }
+
+	_, err := client.FetchAlertConfigs(context.Background())
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, 1, mock.calls, "must stop retrying once sleep returns an error")
 }

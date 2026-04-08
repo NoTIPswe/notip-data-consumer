@@ -2,15 +2,16 @@ name: Quality Checks
 
 on:
   workflow_call:
-
-permissions:
-  pull-requests: write
-  contents: read
+    secrets:
+      SONAR_TOKEN:
+        required: true
 
 jobs:
   lint:
     name: Format, Vet & Lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     container:
       image: ghcr.io/notipswe/notip-go-dev:v0.0.1
       options: --user root 
@@ -48,6 +49,9 @@ jobs:
     name: Tests & Coverage
     needs: [lint]
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
     container:
       image: ghcr.io/notipswe/notip-go-dev:v0.0.1
       options: --user root
@@ -89,6 +93,8 @@ jobs:
     name: Integration Tests
     needs: [lint]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     container:
       image: ghcr.io/notipswe/notip-go-dev:v0.0.1
       options: --user root

@@ -2,6 +2,7 @@ package driven
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/NoTIPswe/notip-data-consumer/internal/domain/model"
 )
@@ -21,16 +22,18 @@ type statusUpdateErrRecorder interface {
 type NATSGatewayStatusUpdater struct {
 	client  gatewayStatusUpdateCaller
 	metrics statusUpdateErrRecorder
+	logger  *slog.Logger
 }
 
 func NewNATSGatewayStatusUpdater(client gatewayStatusUpdateCaller, metrics statusUpdateErrRecorder) *NATSGatewayStatusUpdater {
-	return &NATSGatewayStatusUpdater{client: client, metrics: metrics}
+	return &NATSGatewayStatusUpdater{client: client, metrics: metrics, logger: slog.Default()}
 }
 
 // calls the Management API via NATS RR to report a gateway status transition.
 func (u *NATSGatewayStatusUpdater) UpdateStatus(ctx context.Context, update model.GatewayStatusUpdate) error {
 	if err := u.client.UpdateGatewayStatus(ctx, update); err != nil {
 		u.metrics.IncStatusUpdateErrors()
+		u.logger.Error("gateway status update failed", "err", err)
 		return err
 	}
 	return nil

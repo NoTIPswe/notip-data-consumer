@@ -189,7 +189,7 @@ func TestMetricsSatisfiesNarrowInterfaces(t *testing.T) {
 		SetHeartbeatMapSize(v float64)
 		SetDispatchQueueLength(v float64)
 	}
-	type heartbeatTickMetrics interface {
+	type heartbeatTickDurationObserver interface {
 		ObserveHeartbeatTickDuration(d time.Duration)
 	}
 	type natsReconnectRecorder interface {
@@ -204,7 +204,7 @@ func TestMetricsSatisfiesNarrowInterfaces(t *testing.T) {
 	var _ statusErrRecorder = m
 	var _ alertCacheMetrics = m
 	var _ heartbeatTrackerMetrics = m
-	var _ heartbeatTickMetrics = m
+	var _ heartbeatTickDurationObserver = m
 	var _ natsReconnectRecorder = m
 	var _ lifecycleQueryErrRecorder = m
 }

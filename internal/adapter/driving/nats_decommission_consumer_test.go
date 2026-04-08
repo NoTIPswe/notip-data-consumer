@@ -3,6 +3,7 @@ package driving
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -82,7 +83,7 @@ func TestNATSDecommissionConsumerExtractIDsMalformedSubject(t *testing.T) {
 
 func TestNATSDecommissionConsumerHandleMsgDispatches(t *testing.T) {
 	handler := &stubDecommissionHandler{}
-	c := &NATSDecommissionConsumer{handler: handler}
+	c := &NATSDecommissionConsumer{handler: handler, logger: slog.Default()}
 
 	msg := &nats.Msg{
 		Subject: "gateway.decommissioned.t1.gw-1",
@@ -101,7 +102,7 @@ func TestNATSDecommissionConsumerHandleMsgDispatches(t *testing.T) {
 
 func TestNATSDecommissionConsumerHandleMsgBadSubjectTerms(t *testing.T) {
 	handler := &stubDecommissionHandler{}
-	c := &NATSDecommissionConsumer{handler: handler}
+	c := &NATSDecommissionConsumer{handler: handler, logger: slog.Default()}
 
 	msg := &nats.Msg{Subject: "gateway.decommissioned.missing-gwid"}
 	c.handleMsg(msg)

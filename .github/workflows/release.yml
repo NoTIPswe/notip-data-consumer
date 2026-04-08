@@ -10,22 +10,24 @@ concurrency:
   group: release-${{ github.repository }}
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  issues: write
-  pull-requests: write
-  packages: write
-
 jobs:
   quality-checks:
     name: Quality Checks
     uses: ./.github/workflows/quality-checks.yml
-    secrets: inherit
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    permissions:
+      pull-requests: write
+      contents: read
 
   release:
     name: Semantic Release
     needs: quality-checks
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     outputs:
       released: ${{ steps.semantic.outputs.released }}
       version: ${{ steps.semantic.outputs.version }}
@@ -87,6 +89,9 @@ jobs:
     needs: release
     if: needs.release.outputs.released == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
 
     steps:
       - name: Checkout release tag
