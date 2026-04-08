@@ -18,7 +18,7 @@ import yaml from 'js-yaml';
 const args = process.argv.slice(2);
 const get = (flag) => {
   const i = args.indexOf(flag);
-  return i !== -1 ? args[i + 1] : null;
+  return i === -1 ? null : args[i + 1];
 };
 
 const inputPath = get('--input');

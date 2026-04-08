@@ -21,7 +21,7 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser \
     && apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --chown=appuser:appuser --from=builder /app/notip-app .
+COPY --chmod=550 --chown=appuser:appuser --from=builder /app/notip-app .
 
 USER appuser
 

@@ -8,7 +8,15 @@
 .air.toml
 .releaserc.json
 .sonarcloud.properties
+sonar-project.properties
+.golangci.yml
 .devcontainer/
+
+# Build tooling (not needed inside the image)
+Makefile
+scripts/
+api-contracts/
+migrations/
 
 # Node (semantic-release only)
 node_modules/

@@ -15,12 +15,13 @@ const (
 	testDBHost      = "measures-db"
 	testDBSSLVerify = "verify-full"
 	testInvalidNum  = "not-a-number"
+	testNATSURL     = "tls://nats:4222"
 )
 
 // Set all the required env varibles.
 func setRequiredEnv(t *testing.T) {
 	t.Helper()
-	t.Setenv("NATS_URL", "tls://nats:4222")
+	t.Setenv("NATS_URL", testNATSURL)
 	t.Setenv("NATS_TLS_CA", testCertCAPath)
 	t.Setenv("NATS_TLS_CERT", "/certs/data-consumer.crt")
 	t.Setenv("NATS_TLS_KEY", "/certs/data-consumer.key")
@@ -188,8 +189,8 @@ func TestLoadVerifyFullWithRootCert(t *testing.T) {
 
 func TestGetDatabaseDSN(t *testing.T) {
 	secretFile := filepath.Join(t.TempDir(), "db_password")
-	password := "test-db-pass-1"
-	require.NoError(t, os.WriteFile(secretFile, []byte(password+"\n"), 0o600))
+	testFileContent := "test-db-pass-1"
+	require.NoError(t, os.WriteFile(secretFile, []byte(testFileContent+"\n"), 0o600))
 
 	cfg := &Config{
 		DBUser:         "notip_measures",
@@ -210,7 +211,7 @@ func TestGetDatabaseDSN(t *testing.T) {
 
 	assert.Equal(t, "postgres", parsed.Scheme)
 	assert.Equal(t, "notip_measures", parsed.User.Username())
-	assert.Equal(t, password, userPassword)
+	assert.Equal(t, testFileContent, userPassword)
 	assert.Equal(t, testDBHost+":5432", parsed.Host)
 	assert.Equal(t, "/notip_measures", parsed.Path)
 	assert.Equal(t, "disable", parsed.Query().Get("sslmode"))
@@ -218,8 +219,8 @@ func TestGetDatabaseDSN(t *testing.T) {
 
 func TestGetDatabaseDSNWithRootCert(t *testing.T) {
 	secretFile := filepath.Join(t.TempDir(), "db_password")
-	password := "test-db-pass-2"
-	require.NoError(t, os.WriteFile(secretFile, []byte(password+"\n"), 0o600))
+	testFileContent := "test-db-pass-2"
+	require.NoError(t, os.WriteFile(secretFile, []byte(testFileContent+"\n"), 0o600))
 
 	cfg := &Config{
 		DBUser:         "notip_measures",
@@ -241,7 +242,7 @@ func TestGetDatabaseDSNWithRootCert(t *testing.T) {
 
 	assert.Equal(t, "postgres", parsed.Scheme)
 	assert.Equal(t, "notip_measures", parsed.User.Username())
-	assert.Equal(t, password, userPassword)
+	assert.Equal(t, testFileContent, userPassword)
 	assert.Equal(t, testDBHost+":5432", parsed.Host)
 	assert.Equal(t, "/notip_measures", parsed.Path)
 	assert.Equal(t, testDBSSLVerify, parsed.Query().Get("sslmode"))
