@@ -219,12 +219,16 @@ func (t *HeartbeatTracker) Tick(ctx context.Context) {
 			continue
 		}
 
-		_ = t.alertPublisher.Publish(ctx, entry.tenantID, model.AlertPayload{
+		if err := t.alertPublisher.Publish(ctx, entry.tenantID, model.AlertPayload{
 			GatewayID: entry.gatewayID,
 			LastSeen:  entry.lastSeen,
 			TimeoutMs: timeoutMs,
 			Timestamp: now,
-		})
+		}); err != nil {
+			// Error already logged and metered by the publisher.
+			// Skip state transition so the next tick retries the alert.
+			continue
+		}
 
 		t.dispatchStatusUpdate(model.GatewayStatusUpdate{
 			GatewayID:  entry.gatewayID,
@@ -233,11 +237,14 @@ func (t *HeartbeatTracker) Tick(ctx context.Context) {
 		})
 
 		// Phase 3 — write lock to update state.
-		// Re-validate lastSeen: if a new telemetry arrived between the snapshot and now,
-		// the gateway recovered and must NOT be marked offline.
+		// Always mark Offline after a successful publish, regardless of whether a
+		// telemetry message arrived between the snapshot and now. If a real heartbeat
+		// did arrive, the next HandleTelemetry call will detect the Offline→Online
+		// transition and dispatch a recovery update. Skipping this update when lastSeen
+		// advanced was the original intent, but it left knownStatus as Online while the
+		// external system was told Offline, causing the next offline event to be missed.
 		t.mu.Lock()
-		if real, exists := t.beats[gatewayKey{entry.tenantID, entry.gatewayID}]; exists &&
-			!real.lastSeen.After(entry.lastSeen) {
+		if real, exists := t.beats[gatewayKey{entry.tenantID, entry.gatewayID}]; exists {
 			real.knownStatus = model.Offline
 		}
 		t.mu.Unlock()

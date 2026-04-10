@@ -57,7 +57,7 @@ func Load() (*Config, error) {
 		GatewayBufferSize:           1000,
 		HeartbeatTickMs:             10000,
 		HeartbeatGracePeriodMs:      120000,
-		AlertConfigRefreshMs:        120000,
+		AlertConfigRefreshMs:        10000,
 		AlertConfigDefaultTimeoutMs: 60000,
 		AlertConfigMaxRetries:       10,
 		AlertConfigInitialBackoffMs: 1000,

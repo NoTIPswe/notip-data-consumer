@@ -452,6 +452,44 @@ func TestTick(t *testing.T) {
 		updater.AssertNumberOfCalls(t, "UpdateStatus", 1) // only the initial Online, no Offline
 	})
 
+	t.Run("publish failure skips state transition so next tick retries", func(t *testing.T) {
+		clk := &mockClock{now: epoch}
+		publisher := &mockAlertPublisher{}
+		updater := &mockStatusUpdater{}
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		updater.On("UpdateStatus", mock.Anything, mock.MatchedBy(func(u model.GatewayStatusUpdate) bool {
+			return u.Status == model.Online
+		})).Run(syncRun(&wg)).Return(nil).Once()
+
+		tr, _ := newTracker(t, clk, publisher, updater, 60000, 10)
+		_ = tr.HandleTelemetry(context.Background(), tenantID, envelope(gatewayID))
+		wg.Wait()
+
+		// First tick: Publish fails — state must NOT advance to Offline.
+		publisher.On("Publish", mock.Anything, tenantID, mock.Anything).
+			Return(errors.New("nats unavailable")).Once()
+
+		clk.now = epoch.Add(2 * time.Minute)
+		tr.Tick(context.Background())
+
+		// Second tick: Publish succeeds — gateway is still Online in the map so the
+		// alert is retried and state advances to Offline.
+		publisher.On("Publish", mock.Anything, tenantID, mock.Anything).Return(nil).Once()
+		wg.Add(1)
+		updater.On("UpdateStatus", mock.Anything, mock.MatchedBy(func(u model.GatewayStatusUpdate) bool {
+			return u.Status == model.Offline
+		})).Run(syncRun(&wg)).Return(nil).Once()
+
+		clk.now = epoch.Add(3 * time.Minute)
+		tr.Tick(context.Background())
+		wg.Wait()
+
+		publisher.AssertNumberOfCalls(t, "Publish", 2)
+		updater.AssertExpectations(t)
+	})
+
 	t.Run("lifecycle query error falls back to alert (fail-open)", func(t *testing.T) {
 		clk := &mockClock{now: epoch}
 		publisher := &mockAlertPublisher{}

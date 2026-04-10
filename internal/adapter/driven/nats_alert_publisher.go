@@ -23,7 +23,7 @@ type alertPublisherMetrics interface {
 }
 
 // NATSAlertPublisher implements port.AlertPublisher.
-// serializes AlertPayload to JSON and publishes to alert.gw_offline.{tenantId} via JetStream.
+// serializes AlertPayload to JSON and publishes to alert.{tenantId}.gw_offline via JetStream.
 type NATSAlertPublisher struct {
 	js      natsJSPublisher
 	metrics alertPublisherMetrics
@@ -37,7 +37,7 @@ func NewNATSAlertPublisher(js natsJSPublisher, metrics alertPublisherMetrics) *N
 	return &NATSAlertPublisher{js: js, metrics: metrics, logger: slog.Default()}
 }
 
-// serialise payload to JSON and publish it to alert.gw_offline.{tenantID}
+// serialise payload to JSON and publish it to alert.{tenantID}.gw_offline
 // context is accepted for interface compliance but not threaded into js.Publish
 // synchronous Publish API does not support per-call context cancellation.
 func (p *NATSAlertPublisher) Publish(_ context.Context, tenantID string, payload model.AlertPayload) error {
@@ -46,7 +46,7 @@ func (p *NATSAlertPublisher) Publish(_ context.Context, tenantID string, payload
 		return fmt.Errorf("marshal alert payload: %w", err)
 	}
 
-	subject := fmt.Sprintf("alert.gw_offline.%s", tenantID)
+	subject := fmt.Sprintf("alert.%s.gw_offline", tenantID)
 	if _, err := p.js.Publish(subject, data); err != nil {
 		p.metrics.IncAlertPublishErrors()
 		p.logger.Error("offline alert publish failed", "err", err)

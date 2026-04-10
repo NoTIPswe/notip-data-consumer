@@ -53,7 +53,7 @@ func TestNATSAlertPublisherSuccess(t *testing.T) {
 	err := p.Publish(context.Background(), "t1", model.AlertPayload{GatewayID: "gw-1"})
 
 	require.NoError(t, err)
-	assert.Equal(t, "alert.gw_offline.t1", js.lastSubject, "subject must follow alert.gw_offline.{tenantID} format")
+	assert.Equal(t, "alert.t1.gw_offline", js.lastSubject, "subject must follow alert.{tenantID}.gw_offline format")
 	assert.NotEmpty(t, js.lastData, "request body must not be empty")
 	assert.Equal(t, 1, m.published)
 	assert.Equal(t, 0, m.errors)
@@ -64,8 +64,8 @@ func TestNATSAlertPublisherSubjectFormat(t *testing.T) {
 		tenantID        string
 		expectedSubject string
 	}{
-		{"acme", "alert.gw_offline.acme"},
-		{"tenant-99", "alert.gw_offline.tenant-99"},
+		{"acme", "alert.acme.gw_offline"},
+		{"tenant-99", "alert.tenant-99.gw_offline"},
 	}
 
 	for _, tc := range tests {
@@ -84,7 +84,7 @@ func TestNATSAlertPublisherNATSError(t *testing.T) {
 	err := p.Publish(context.Background(), "t1", model.AlertPayload{GatewayID: "gw-1"})
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "alert.gw_offline.t1", "error must include the subject for observability")
+	assert.Contains(t, err.Error(), "alert.t1.gw_offline", "error must include the subject for observability")
 	assert.Equal(t, 0, m.published)
 	assert.Equal(t, 1, m.errors)
 }
