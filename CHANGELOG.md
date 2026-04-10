@@ -1,3 +1,11 @@
+## [1.3.1](https://github.com/NoTIPswe/notip-data-consumer/compare/v1.3.0...v1.3.1) (2026-04-10)
+
+
+### Bug Fixes
+
+* nats problems ([7a662b2](https://github.com/NoTIPswe/notip-data-consumer/commit/7a662b2854eaba83c1112315e86d665cb9c68118))
+* update alert subject format and increase alert config refresh interval ([8aa0f0b](https://github.com/NoTIPswe/notip-data-consumer/commit/8aa0f0b2319ec4ff29d01d1383479c2484c39bf6))
+
 # [1.3.0](https://github.com/NoTIPswe/notip-data-consumer/compare/v1.2.0...v1.3.0) (2026-04-08)
 
 
