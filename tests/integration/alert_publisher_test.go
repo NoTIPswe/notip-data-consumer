@@ -23,7 +23,7 @@ func (*noopAlertPublisherMetrics) IncAlertsPublished()    { /* empty for decisio
 func (*noopAlertPublisherMetrics) IncAlertPublishErrors() { /* empty for decision */ }
 
 // TestNATSAlertPublisherIntegrationPublishToCorrectSubject publishes an alert
-// and verifies that a subscriber on alert.gw_offline.{tenantId} receives the
+// and verifies that a subscriber on alert.{tenantId}.gw_offline receives the
 // exact JSON payload.
 func TestNATSAlertPublisherIntegrationPublishToCorrectSubject(t *testing.T) {
 	purgeStream(t, streamAlerts)
@@ -33,7 +33,7 @@ func TestNATSAlertPublisherIntegrationPublishToCorrectSubject(t *testing.T) {
 	require.NoError(t, err)
 
 	// Subscribe before publishing so nothing is missed.
-	sub, err := js.SubscribeSync("alert.gw_offline.tenant-alert-test", nats.Durable("alert-test-sub"))
+	sub, err := js.SubscribeSync("alert.tenant-alert-test.gw_offline", nats.Durable("alert-test-sub"))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sub.Unsubscribe() })
 
@@ -69,11 +69,11 @@ func TestNATSAlertPublisherIntegrationMultiTenantIsolation(t *testing.T) {
 	js, err := nc.JetStream()
 	require.NoError(t, err)
 
-	subA, err := js.SubscribeSync("alert.gw_offline.tenant-A", nats.Durable("iso-sub-a"))
+	subA, err := js.SubscribeSync("alert.tenant-A.gw_offline", nats.Durable("iso-sub-a"))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = subA.Unsubscribe() })
 
-	subB, err := js.SubscribeSync("alert.gw_offline.tenant-B", nats.Durable("iso-sub-b"))
+	subB, err := js.SubscribeSync("alert.tenant-B.gw_offline", nats.Durable("iso-sub-b"))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = subB.Unsubscribe() })
 

@@ -59,7 +59,7 @@ type TelemetryRow struct {
 	KeyVersion    int
 }
 
-// AlertPayload is published to alert.gw_offline.{tenantId} on an offline transition.
+// AlertPayload is published to alert.{tenantId}.gw_offline on an offline transition.
 type AlertPayload struct {
 	GatewayID string    `json:"gatewayId"`
 	LastSeen  time.Time `json:"lastSeen"`

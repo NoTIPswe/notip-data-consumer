@@ -69,7 +69,7 @@ func TestPipelineE2EFullDataFlow(t *testing.T) {
 
 	// Subscribe to the alert subject before any telemetry is published.
 	alertSub, err := js.SubscribeSync(
-		fmt.Sprintf("alert.gw_offline.%s", e2eTenantID),
+		fmt.Sprintf("alert.%s.gw_offline", e2eTenantID),
 		nats.Durable(fmt.Sprintf("e2e-alert-sub-%d", time.Now().UnixNano())),
 		nats.DeliverNew(),
 	)
