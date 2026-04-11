@@ -1,3 +1,15 @@
+# [2.0.0](https://github.com/NoTIPswe/notip-data-consumer/compare/v1.3.1...v2.0.0) (2026-04-11)
+
+
+### Bug Fixes
+
+* update README ([066363a](https://github.com/NoTIPswe/notip-data-consumer/commit/066363ab2a46b2a803ff42115c4aa9eac34a9ff0))
+
+
+### BREAKING CHANGES
+
+* update version
+
 ## [1.3.1](https://github.com/NoTIPswe/notip-data-consumer/compare/v1.3.0...v1.3.1) (2026-04-10)
 
 
