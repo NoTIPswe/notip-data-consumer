@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/NoTIPswe/notip-data-consumer/compare/v2.0.0...v2.0.1) (2026-04-12)
+
+
+### Bug Fixes
+
+* changed sonarqube properties ([987759d](https://github.com/NoTIPswe/notip-data-consumer/commit/987759db6b1bef098f452eddbd7ecf8873e4ec97))
+
 # [2.0.0](https://github.com/NoTIPswe/notip-data-consumer/compare/v1.3.1...v2.0.0) (2026-04-11)
 
 
