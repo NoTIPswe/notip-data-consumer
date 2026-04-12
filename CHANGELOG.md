@@ -1,3 +1,10 @@
+## [2.0.2](https://github.com/NoTIPswe/notip-data-consumer/compare/v2.0.1...v2.0.2) (2026-04-12)
+
+
+### Bug Fixes
+
+* add quality gate and coverage badges to README ([af33fc6](https://github.com/NoTIPswe/notip-data-consumer/commit/af33fc6b9031474deed868b61e07c6a0cfec7819))
+
 ## [2.0.1](https://github.com/NoTIPswe/notip-data-consumer/compare/v2.0.0...v2.0.1) (2026-04-12)
 
 
