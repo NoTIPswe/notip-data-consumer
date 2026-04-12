@@ -15,8 +15,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/NoTIPswe/notip-data-consumer/internal/adapter/driven"
+	"github.com/NoTIPswe/notip-data-consumer/internal/adapter/driving"
 	"github.com/NoTIPswe/notip-data-consumer/internal/config"
 	"github.com/NoTIPswe/notip-data-consumer/internal/metrics"
+	"github.com/NoTIPswe/notip-data-consumer/migrations"
 )
 
 // requiredEnvVars are the env vars that config.Load() requires.
@@ -53,6 +56,11 @@ func patchRunSeams(t *testing.T) {
 	prevDrainNATS := drainNATS
 	prevParsePoolConfig := parsePoolConfig
 	prevNewPoolWithConfig := newPoolWithConfig
+	prevApplyMigrations := applyMigrations
+	prevClosePool := closePool
+	prevRunAlertCache := runAlertCache
+	prevRunDecommConsumer := runDecommConsumer
+	prevRunTelemetryConsumer := runTelemetryConsumer
 
 	t.Cleanup(func() {
 		loadConfig = prevLoadConfig
@@ -62,13 +70,38 @@ func patchRunSeams(t *testing.T) {
 		drainNATS = prevDrainNATS
 		parsePoolConfig = prevParsePoolConfig
 		newPoolWithConfig = prevNewPoolWithConfig
+		applyMigrations = prevApplyMigrations
+		closePool = prevClosePool
+		runAlertCache = prevRunAlertCache
+		runDecommConsumer = prevRunDecommConsumer
+		runTelemetryConsumer = prevRunTelemetryConsumer
 	})
 
 	newMetrics = func() *metrics.Metrics {
 		return metrics.New(prometheus.NewRegistry())
 	}
-	drainNATS = func(_ *nats.Conn) {
-		// No-op in tests because stubbed NATS connections are not fully initialised.
+	drainNATS = func(_ *nats.Conn) { /* no-op: stub conn has no live connections to drain */ }
+	closePool = func(_ *pgxpool.Pool) { /* no-op: stub pool has no live connections to close */ }
+	runAlertCache = func(_ context.Context, _ *driven.AlertConfigCache) { /* no-op: avoids NATS calls on stub conn */ }
+	runDecommConsumer = func(_ context.Context, _ *driving.NATSDecommissionConsumer) error { return nil }
+	runTelemetryConsumer = func(_ context.Context, _ *driving.NATSTelemetryConsumer) error { return nil }
+}
+
+// stubInfraSeams stubs all infrastructure seams so that run() reaches the
+// service-building phase without touching real NATS or Postgres.
+func stubInfraSeams(t *testing.T) {
+	t.Helper()
+	connectNATS = func(_ *config.Config, _ *metrics.Metrics) (*nats.Conn, error) {
+		return &nats.Conn{}, nil
+	}
+	jetStreamFromConn = func(_ *nats.Conn) (nats.JetStreamContext, error) {
+		return nil, nil
+	}
+	parsePoolConfig = func(_ string) (*pgxpool.Config, error) {
+		return &pgxpool.Config{}, nil
+	}
+	newPoolWithConfig = func(_ context.Context, _ *pgxpool.Config) (*pgxpool.Pool, error) {
+		return &pgxpool.Pool{}, nil
 	}
 }
 
@@ -173,6 +206,62 @@ func TestRunReturnsErrorOnCreatePGXPoolFailure(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "create pgxpool")
+}
+
+// TestRunReturnsErrorOnMigrationsFailure verifies that run() returns a wrapped error
+// when migrations.Apply fails, after a successful pool connection.
+func TestRunReturnsErrorOnMigrationsFailure(t *testing.T) {
+	patchRunSeams(t)
+	secretFile := filepath.Join(t.TempDir(), testDBSecretName)
+	require.NoError(t, os.WriteFile(secretFile, []byte("pw\n"), 0o600))
+	setRunRequiredEnv(t, secretFile)
+	stubInfraSeams(t)
+
+	applyMigrations = func(_ context.Context, _ migrations.SQLExecutor) error {
+		return errors.New("migration: permission denied")
+	}
+
+	err := run()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "apply database migrations")
+}
+
+// TestRunReturnsErrorOnTelemetryConsumerFailure verifies that run() propagates an error
+// returned by the telemetry consumer, covering the full adapter/service build path.
+func TestRunReturnsErrorOnTelemetryConsumerFailure(t *testing.T) {
+	patchRunSeams(t)
+	secretFile := filepath.Join(t.TempDir(), testDBSecretName)
+	require.NoError(t, os.WriteFile(secretFile, []byte("pw\n"), 0o600))
+	setRunRequiredEnv(t, secretFile)
+	stubInfraSeams(t)
+
+	applyMigrations = func(_ context.Context, _ migrations.SQLExecutor) error { return nil }
+	runTelemetryConsumer = func(_ context.Context, _ *driving.NATSTelemetryConsumer) error {
+		return errors.New("subscribe: no responders")
+	}
+
+	err := run()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "telemetry consumer")
+}
+
+// TestRunSucceeds verifies the full happy-path: run() starts all components and
+// returns nil when the telemetry consumer exits cleanly.
+func TestRunSucceeds(t *testing.T) {
+	patchRunSeams(t)
+	secretFile := filepath.Join(t.TempDir(), testDBSecretName)
+	require.NoError(t, os.WriteFile(secretFile, []byte("pw\n"), 0o600))
+	setRunRequiredEnv(t, secretFile)
+	stubInfraSeams(t)
+
+	applyMigrations = func(_ context.Context, _ migrations.SQLExecutor) error { return nil }
+	// runTelemetryConsumer is already stubbed to return nil by patchRunSeams.
+
+	err := run()
+
+	require.NoError(t, err)
 }
 
 // TestMainExitsOneOnError verifies that main() calls os.Exit(1) when run() fails.

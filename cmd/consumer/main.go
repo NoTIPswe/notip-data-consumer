@@ -53,6 +53,17 @@ var (
 	}
 	parsePoolConfig   = pgxpool.ParseConfig
 	newPoolWithConfig = pgxpool.NewWithConfig
+
+	applyMigrations = migrations.Apply
+	closePool       = func(p *pgxpool.Pool) { p.Close() }
+
+	runAlertCache     = func(ctx context.Context, c *driven.AlertConfigCache) { c.Run(ctx) }
+	runDecommConsumer = func(ctx context.Context, c *driving.NATSDecommissionConsumer) error {
+		return c.Run(ctx)
+	}
+	runTelemetryConsumer = func(ctx context.Context, c *driving.NATSTelemetryConsumer) error {
+		return c.Run(ctx)
+	}
 )
 
 func main() {
@@ -107,9 +118,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("create pgxpool: %w", err)
 	}
-	defer pool.Close()
+	defer closePool(pool)
 
-	if err := migrations.Apply(ctx, pool); err != nil {
+	if err := applyMigrations(ctx, pool); err != nil {
 		return fmt.Errorf("apply database migrations: %w", err)
 	}
 	slog.Info("database ready", "max_conns", cfg.DBMaxConns, "min_conns", cfg.DBMinConns)
@@ -181,14 +192,14 @@ func run() error {
 	defer metricsSrv.Shutdown(context.Background()) //nolint:errcheck
 
 	// ── Step 4: AlertConfigCache initial fetch + refresh loop ──────────────────
-	go alertCache.Run(ctx)
+	go runAlertCache(ctx, alertCache)
 
 	// ── Step 5: HeartbeatTickTimer ──────────────────────────────────────────────
 	go tickTimer.Run(ctx)
 
 	// ── Step 7: DecommissionConsumer ────────────────────────────────────────────
 	go func() {
-		if err := decommConsumer.Run(ctx); err != nil {
+		if err := runDecommConsumer(ctx, decommConsumer); err != nil {
 			slog.Error("decommission consumer", "err", err)
 		}
 	}()
@@ -206,7 +217,7 @@ func run() error {
 	)
 
 	// ── Step 8: TelemetryConsumer — blocks until ctx is cancelled ───────────────
-	if err := telemetryConsumer.Run(ctx); err != nil {
+	if err := runTelemetryConsumer(ctx, telemetryConsumer); err != nil {
 		return fmt.Errorf("telemetry consumer: %w", err)
 	}
 
