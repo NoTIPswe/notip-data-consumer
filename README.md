@@ -1,4 +1,6 @@
 # notip-data-consumer
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=NoTIPswe_notip-data-consumer&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=NoTIPswe_notip-data-consumer)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=NoTIPswe_notip-data-consumer&metric=coverage)](https://sonarcloud.io/summary/new_code?id=NoTIPswe_notip-data-consumer)
 
 Go microservice in the NoTIP platform. Consumes encrypted telemetry from NATS JetStream, persists it to TimescaleDB, and tracks gateway liveness to fire offline alerts.
 
