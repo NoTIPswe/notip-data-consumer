@@ -48,7 +48,7 @@ func TestLoadDefaults(t *testing.T) {
 	assert.Equal(t, 1000, cfg.GatewayBufferSize)
 	assert.Equal(t, 10000, cfg.HeartbeatTickMs)
 	assert.Equal(t, 120000, cfg.HeartbeatGracePeriodMs)
-	assert.Equal(t, 120000, cfg.AlertConfigRefreshMs)
+	assert.Equal(t, 30000, cfg.AlertConfigRefreshMs)
 	assert.Equal(t, int64(60000), cfg.AlertConfigDefaultTimeoutMs)
 	assert.Equal(t, 10, cfg.AlertConfigMaxRetries)
 	assert.Equal(t, 1000, cfg.AlertConfigInitialBackoffMs)
