@@ -1,3 +1,10 @@
+## [2.0.3](https://github.com/NoTIPswe/notip-data-consumer/compare/v2.0.2...v2.0.3) (2026-04-14)
+
+
+### Bug Fixes
+
+* update AlertCongiRefreshMs value, 120000->30000 ([b32ef03](https://github.com/NoTIPswe/notip-data-consumer/commit/b32ef030c16fd92471072138b0ea128f4175feec))
+
 ## [2.0.2](https://github.com/NoTIPswe/notip-data-consumer/compare/v2.0.1...v2.0.2) (2026-04-12)
 
 
